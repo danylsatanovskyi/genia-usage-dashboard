@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # Constants
-EXCEL_FILE = 'CLIENT SOLUTION REPORTING - 2026🔥.xlsx'
+EXCEL_FILE = 'data.xlsx'
 COMPANY_SHEETS = ['HEMA-QUEBEC', 'CELLCOM', 'SERIE CONSEIL', 'TECHO BLOC', 'DIGITAD', 'RETROMTL', 'CHEMTECH']
 MONTHS_FR = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 
              'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre']
