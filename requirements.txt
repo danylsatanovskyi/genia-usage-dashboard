@@ -3,3 +3,5 @@ pandas
 openpyxl
 plotly
 python-dateutil
+supabase
+python-dotenv

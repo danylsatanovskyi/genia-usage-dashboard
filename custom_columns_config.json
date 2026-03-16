@@ -1,0 +1,21 @@
+{
+  "data_columns": {},
+  "calculated_columns": {},
+  "visible_columns": [
+    "CLIENT",
+    "PROJECT",
+    "Month Activated",
+    "Investment",
+    "Usage Type",
+    "usage_last_30_days",
+    "usage_last_3_months",
+    "usage_last_12_months",
+    "time_saved_hours_30d",
+    "Monthly ROI Goal",
+    "cost_saved_30d",
+    "roi_goal_achieved",
+    "cumulative_cost_saved",
+    "roi_reached",
+    "roi_status"
+  ]
+}

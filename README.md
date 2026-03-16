@@ -1,0 +1,89 @@
+# Genia Usage Dashboard
+
+ROI Dashboard for tracking Client Solutions usage and savings, now powered by Supabase!
+
+## Features
+
+- 📊 Real-time usage tracking from Supabase
+- 💰 ROI calculations and break-even estimates
+- 📈 Monthly trends and analytics
+- 🚨 Usage drop alerts
+- 🔍 Detailed solution drill-down
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your Supabase credentials:
+
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key-here
+```
+
+### 3. Configure Projects
+
+Edit `config.py` to add or modify company/project configurations. Each project needs:
+
+- `supabase_table`: Name of the Supabase table
+- `usage_field`: Field name to track (e.g., `queries_sent`)
+- `value_type`: Either `"boolean"` (count True values) or `"numeric"` (sum values)
+- `investment`: Total project cost
+- `monthly_roi_goal`: Monthly savings target
+- `hourly_rate`: Client's hourly rate
+- `minutes_saved_per_usage`: Time saved per usage instance
+- `usage_type`: Description of what's being counted
+- `month_activated`: Project start date (YYYY-MM-DD)
+
+### 4. Run the Dashboard
+
+```bash
+streamlit run app.py
+```
+
+## How It Works
+
+1. **Data Collection**: The app queries Supabase tables configured in `config.py`
+2. **Monthly Aggregation**: Records are grouped by month based on the `date` field
+3. **Usage Calculation**:
+   - For boolean fields: Counts `True` values
+   - For numeric fields: Sums the values
+4. **Savings Calculation**: `Usage × (Minutes/Use ÷ 60) × Hourly Rate`
+5. **ROI Tracking**: Compares cumulative savings vs. investment
+
+## Supabase Table Requirements
+
+Each table must have:
+- A `date` field (timestamp/date type)
+- A usage tracking field (boolean or numeric)
+
+Example table structure:
+```sql
+CREATE TABLE genia_analytics_company_project (
+    id UUID PRIMARY KEY,
+    date TIMESTAMP NOT NULL,
+    queries_sent BOOLEAN,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Status Legend
+
+- 🟢 **Green**: ROI reached or above monthly target
+- 🟡 **Yellow**: On track (70-100% of target)
+- 🔴 **Red**: Below target (<70%)
+- ⚠️ **Warning**: No usage this month
+- 🚨 **Alert**: Usage dropped >50% from historical average
+- ⚪ **Inactive**: No usage in last 3 months
