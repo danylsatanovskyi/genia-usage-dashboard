@@ -8,7 +8,9 @@ ROI Dashboard for tracking Client Solutions usage and savings, now powered by Su
 - 💰 ROI calculations and break-even estimates
 - 📈 Monthly trends and analytics
 - 🚨 Usage drop alerts
+- 📧 Automatic email alerts when usage drops below average
 - 🔍 Detailed solution drill-down
+- 🎨 Customizable columns and manual project entries
 
 ## Setup
 
@@ -31,6 +33,17 @@ Edit `.env` and add your Supabase credentials:
 ```
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-anon-key-here
+```
+
+**Optional: Email Alerts** (see [Email Alerts Setup](#email-alerts))
+
+```
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+ALERT_FROM_EMAIL=your-email@gmail.com
+ALERT_TO_EMAIL=alerts@company.com
 ```
 
 ### 3. Configure Projects
@@ -87,3 +100,28 @@ CREATE TABLE genia_analytics_company_project (
 - ⚠️ **Warning**: No usage this month
 - 🚨 **Alert**: Usage dropped >50% from historical average
 - ⚪ **Inactive**: No usage in last 3 months
+
+## Email Alerts
+
+Get automatic alerts when yesterday's usage drops below the 3-month daily average.
+
+### Quick Setup (5 minutes)
+
+1. **Get Gmail App Password**
+   - Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+   - Create password for "ROI Dashboard"
+   - Copy the 16-character password
+
+2. **Update .env file** with email settings (see above)
+
+3. **Test in Dashboard**
+   - Go to Settings tab → Email Alert Configuration
+   - Click "Send Test Email"
+   - Verify you received the email
+
+4. **Run Alert Check**
+   - Click "Run Alert Check" to manually check all projects
+   - Alerts sent when: `yesterday_usage < (3_month_total / 90)`
+   - Cooldown: 7 days between alerts per project
+
+**Full Documentation:** See `EMAIL_ALERTS_QUICKSTART.md` and `EMAIL_ALERTS_GUIDE.md`

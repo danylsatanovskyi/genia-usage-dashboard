@@ -14,6 +14,7 @@ import os
 import json
 import time
 from config import SUPABASE_URL, SUPABASE_KEY, COMPANY_CONFIGS
+from modules.email_alerts import check_and_send_alerts, send_email_alert
 
 # Page config
 st.set_page_config(
@@ -233,6 +234,23 @@ def load_data():
                 # Extract month and year
                 records_df['month'] = records_df['created_at'].dt.month
                 records_df['year'] = records_df['created_at'].dt.year
+                records_df['date'] = records_df['created_at'].dt.date
+                
+                # Calculate yesterday's usage
+                from datetime import date, timedelta
+                yesterday = date.today() - timedelta(days=1)
+                yesterday_records = records_df[records_df['date'] == yesterday]
+                
+                if value_type == "boolean":
+                    if usage_field in yesterday_records.columns:
+                        usage_yesterday = yesterday_records[usage_field].sum() if yesterday_records[usage_field].dtype == bool else len(yesterday_records[yesterday_records[usage_field] == True])
+                    else:
+                        usage_yesterday = 0
+                else:  # numeric
+                    if usage_field in yesterday_records.columns:
+                        usage_yesterday = yesterday_records[usage_field].sum()
+                    else:
+                        usage_yesterday = 0
                 
                 # Aggregate by month
                 monthly_usage = {}
@@ -283,7 +301,8 @@ def load_data():
                     'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
                     'Month Activated': metadata.get('Month Activated'),
                     'Usage Type': usage_type_override if usage_type_override else metadata.get('Usage Type'),
-                    'Months Active': metadata.get('Months Active')
+                    'Months Active': metadata.get('Months Active'),
+                    'usage_yesterday': usage_yesterday  # Yesterday's complete day usage
                 }
                 
                 # Add monthly usage data
@@ -663,6 +682,7 @@ def main():
             'Month Activated': 'Activated',
             'Investment': 'Investment',
             'Usage Type': 'What We Count',
+            'usage_yesterday': 'Yesterday',
             'usage_last_30_days': 'Usage (30d)',
             'usage_last_3_months': 'Usage (3mo)',
             'usage_last_12_months': 'Usage (12mo)',
@@ -685,6 +705,8 @@ def main():
             display_table['Activated'] = pd.to_datetime(display_table['Activated'], errors='coerce').dt.strftime('%Y-%m')
         if 'Investment' in display_table.columns:
             display_table['Investment'] = display_table['Investment'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
+        if 'Yesterday' in display_table.columns:
+            display_table['Yesterday'] = display_table['Yesterday'].fillna(0).round(0).astype(int)
         if 'Usage (30d)' in display_table.columns:
             display_table['Usage (30d)'] = display_table['Usage (30d)'].round(0).astype(int)
         if 'Usage (3mo)' in display_table.columns:
@@ -725,6 +747,7 @@ def main():
             - **Project**: The solution/project name
             - **Activated**: When the project went live
             - **Investment**: Total project cost
+            - **Yesterday**: Usage count from yesterday (complete day)
             - **Usage (30d/3mo/12mo)**: Usage count for different time periods
             - **Hours Saved**: Total hours saved for each time period
             - **Monthly Target**: Dollar savings goal for this month
@@ -1218,7 +1241,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         all_possible_columns = [
             'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
             'Usage Type', 'Months Active',
-            'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months',
+            'usage_yesterday', 'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months',
             'time_saved_hours_30d', 'time_saved_hours_3mo', 'time_saved_hours_12mo',
             'Monthly ROI Goal', 'cost_saved_30d', 'cost_saved_3mo', 'cost_saved_12mo',
             'roi_goal_achieved', 'cumulative_cost_saved', 'roi_reached', 'roi_status',
@@ -1241,7 +1264,79 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         
         st.markdown("---")
         
-        # Section 4: Custom Projects/Rows
+        # Section 4: Email Alerts  
+        st.markdown("### 📧 Email Alerts")
+        
+        # Get recipients from .env
+        recipients_str = os.getenv('ALERT_TO_EMAILS', '')
+        recipients = [email.strip() for email in recipients_str.split(',') if email.strip()]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📨 Send Test Email", type="primary", use_container_width=True):
+                test_recipient = recipients[0] if recipients else None
+                if test_recipient:
+                    smtp_config = {
+                        'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+                        'smtp_port': int(os.getenv('SMTP_PORT', 587)),
+                        'smtp_user': os.getenv('SMTP_USER', ''),
+                        'smtp_password': os.getenv('SMTP_PASSWORD', ''),
+                        'from_email': os.getenv('ALERT_FROM_EMAIL', '')
+                    }
+                    
+                    test_body = f"""
+                    <p><strong>✅ Test Email Successful!</strong></p>
+                    <p>Your SMTP configuration is working correctly.</p>
+                    <p style="color: #666; font-size: 12px;">
+                        Sent to: {test_recipient}<br>
+                        Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                    </p>
+                    """
+                    
+                    with st.spinner("Sending..."):
+                        success, message = send_email_alert(
+                            smtp_config, 
+                            test_recipient, 
+                            "Test Alert from ROI Dashboard", 
+                            test_body
+                        )
+                        
+                        if success:
+                            st.success(f"✅ Sent to {test_recipient}")
+                        else:
+                            st.error(f"❌ Failed: {message}")
+                else:
+                    st.error("No recipients configured")
+        
+        with col2:
+            if st.button("▶️ Check & Send Alerts", type="secondary", use_container_width=True):
+                smtp_config = {
+                    'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+                    'smtp_port': int(os.getenv('SMTP_PORT', 587)),
+                    'smtp_user': os.getenv('SMTP_USER', ''),
+                    'smtp_password': os.getenv('SMTP_PASSWORD', ''),
+                    'from_email': os.getenv('ALERT_FROM_EMAIL', '')
+                }
+                
+                alert_config = {
+                    'dashboard_url': 'http://localhost:8501',
+                    'to_emails': recipients
+                }
+                
+                with st.spinner("Checking..."):
+                    alerts_sent, alerts_skipped = check_and_send_alerts(df, smtp_config, alert_config)
+                    
+                    if alerts_sent:
+                        st.success(f"✅ Sent {len(alerts_sent)} alert(s)")
+                        for alert in alerts_sent:
+                            st.caption(f"• {alert['project']}: Yesterday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
+                    else:
+                        st.info("No alerts needed")
+        
+        st.markdown("---")
+        
+        # Section 5: Custom Projects/Rows
         st.markdown("### Custom Projects")
         st.caption("Add manual project entries that don't have Supabase data")
         

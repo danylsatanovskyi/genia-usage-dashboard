@@ -3,3 +3,9 @@ venv/
 credentials.json
 __pycache__/
 data.xlsx
+
+# Email alert files (contain private data)
+alert_subscribers.json
+alert_history.json
+alert_logs.txt
+.env.alert_options
