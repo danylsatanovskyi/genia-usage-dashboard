@@ -151,16 +151,21 @@ def check_and_send_alerts(df, smtp_config, alert_config):
         yesterday_usage = row.get('usage_yesterday', 0)
         recent_avg = row.get('recent_monthly_avg', 0)
         
-        # Alert condition: yesterday < 3-month daily average
-        daily_avg_3mo = recent_avg / 30 if recent_avg > 0 else 0
+        # Alert condition: yesterday < 3-month daily average (strictly less than)
+        # daily_avg = total_3mo_usage / 90 days (approx 3 months)
+        usage_3mo = row.get('usage_last_3_months', 0)
+        daily_avg_3mo = usage_3mo / 90 if usage_3mo > 0 else 0
+        if daily_avg_3mo == 0:
+            alerts_skipped.append({'project': project_key, 'reason': 'No 3-month baseline (avg=0)'})
+            continue
         
-        if yesterday_usage < daily_avg_3mo and daily_avg_3mo > 0:
+        if yesterday_usage < daily_avg_3mo:
             # Prepare email
             subject = f"⚠️ Usage Drop Alert: {row['CLIENT']} - {row['PROJECT']}"
             body = f"""
             <p><strong>Project:</strong> {row['CLIENT']} - {row['PROJECT']}</p>
             <p><strong>Yesterday's Usage:</strong> {yesterday_usage:.0f}</p>
-            <p><strong>3-Month Daily Average:</strong> {daily_avg_3mo:.1f}</p>
+            <p><strong>3-Month Daily Average:</strong> {daily_avg_3mo:.2f} ({usage_3mo:.0f} usages / 90 days)</p>
             <p><strong>Status:</strong> <span style="color: #d32f2f;">Below Average</span></p>
             
             <h3>Details:</h3>
@@ -208,15 +213,9 @@ def check_and_send_alerts(df, smtp_config, alert_config):
                     'reason': f"Failed to send to: {', '.join(failed_recipients)}"
                 })
         else:
-            if daily_avg_3mo == 0:
-                alerts_skipped.append({
-                    'project': project_key,
-                    'reason': 'No 3-month data'
-                })
-            else:
-                alerts_skipped.append({
-                    'project': project_key,
-                    'reason': f'Above average ({yesterday_usage:.0f} >= {daily_avg_3mo:.1f})'
-                })
+            alerts_skipped.append({
+                'project': project_key,
+                'reason': f'Above average ({yesterday_usage:.0f} >= {daily_avg_3mo:.1f})'
+            })
     
     return alerts_sent, alerts_skipped

@@ -200,127 +200,8 @@ def load_data():
     if not supabase:
         return pd.DataFrame()
     
-    # Load metadata from Excel
-    excel_metadata = load_excel_metadata()
-    
-    all_data = []
-    
-    for company_name, company_config in COMPANY_CONFIGS.items():
-        for project_name, project_config in company_config['projects'].items():
-            try:
-                # Query data from Supabase
-                table_name = project_config['supabase_table']
-                usage_field = project_config['usage_field']
-                value_type = project_config['value_type']
-                
-                # Fetch all records from the table
-                response = supabase.table(table_name).select("*").execute()
-                
-                if not response.data:
-                    st.warning(f"No data found for {company_name} - {project_name}")
-                    continue
-                
-                # Convert to DataFrame
-                records_df = pd.DataFrame(response.data)
-                
-                # Ensure 'created_at' column exists and convert to datetime
-                if 'created_at' not in records_df.columns:
-                    st.error(f"'created_at' column not found in {table_name}")
-                    continue
-                
-                records_df['created_at'] = pd.to_datetime(records_df['created_at'], errors='coerce')
-                records_df = records_df[records_df['created_at'].notna()]
-                
-                # Extract month and year
-                records_df['month'] = records_df['created_at'].dt.month
-                records_df['year'] = records_df['created_at'].dt.year
-                records_df['date'] = records_df['created_at'].dt.date
-                
-                # Calculate yesterday's usage
-                from datetime import date, timedelta
-                yesterday = date.today() - timedelta(days=1)
-                yesterday_records = records_df[records_df['date'] == yesterday]
-                
-                if value_type == "boolean":
-                    if usage_field in yesterday_records.columns:
-                        usage_yesterday = yesterday_records[usage_field].sum() if yesterday_records[usage_field].dtype == bool else len(yesterday_records[yesterday_records[usage_field] == True])
-                    else:
-                        usage_yesterday = 0
-                else:  # numeric
-                    if usage_field in yesterday_records.columns:
-                        usage_yesterday = yesterday_records[usage_field].sum()
-                    else:
-                        usage_yesterday = 0
-                
-                # Aggregate by month
-                monthly_usage = {}
-                for month_idx in range(12):
-                    month_name = MONTHS_FR[month_idx]
-                    
-                    # Filter records for this month (across all years, or just current year)
-                    # Using 2025-2026 data (Jan 2025 = Janvier, Feb 2026 = Fevrier, etc.)
-                    if month_idx >= 0:  # January onwards
-                        month_records = records_df[
-                            ((records_df['month'] == month_idx + 1) & (records_df['year'] == 2025)) |
-                            ((records_df['month'] == month_idx + 1) & (records_df['year'] == 2026))
-                        ]
-                    
-                    # Calculate usage based on value_type
-                    if value_type == "boolean":
-                        # Count how many times the field is True
-                        if usage_field in month_records.columns:
-                            usage_count = month_records[usage_field].sum() if month_records[usage_field].dtype == bool else len(month_records[month_records[usage_field] == True])
-                        else:
-                            usage_count = 0
-                    else:  # numeric
-                        # Sum the numeric values
-                        if usage_field in month_records.columns:
-                            usage_count = month_records[usage_field].sum()
-                        else:
-                            usage_count = 0
-                    
-                    monthly_usage[month_name] = usage_count
-                
-                # Get metadata from Excel (if available)
-                project_key = f"{company_name}_{project_name}"
-                metadata = excel_metadata.get(project_key, {})
-                
-                # Hardcoded overrides for specific projects (if Excel has errors)
-                usage_type_override = None
-                if company_name == "TECHO BLOC" and project_name == "MATCHING":
-                    usage_type_override = "Matched Companies"
-                
-                # Create row for this project - use Excel metadata
-                project_row = {
-                    'COMPANY': company_name,
-                    'CLIENT': company_config.get('client_name', company_name),
-                    'PROJECT': project_name,
-                    'Investment': metadata.get('Investment'),
-                    'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
-                    'Client Hourly Rate': metadata.get('Client Hourly Rate'),
-                    'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                    'Month Activated': metadata.get('Month Activated'),
-                    'Usage Type': usage_type_override if usage_type_override else metadata.get('Usage Type'),
-                    'Months Active': metadata.get('Months Active'),
-                    'usage_yesterday': usage_yesterday  # Yesterday's complete day usage
-                }
-                
-                # Add monthly usage data
-                project_row.update(monthly_usage)
-                
-                all_data.append(project_row)
-                
-            except Exception as e:
-                st.error(f"Error fetching data for {company_name} - {project_name}: {e}")
-                import traceback
-                st.text(traceback.format_exc())
-                continue
-    
-    if all_data:
-        combined_df = pd.DataFrame(all_data)
-        return combined_df
-    else:
-        return pd.DataFrame()
+    from modules.data_loader import load_data as _load_data
+    return _load_data(supabase, COMPANY_CONFIGS)
 
 def calculate_metrics(df):
     """Calculate usage, savings, and ROI metrics"""
@@ -1271,68 +1152,31 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         recipients_str = os.getenv('ALERT_TO_EMAILS', '')
         recipients = [email.strip() for email in recipients_str.split(',') if email.strip()]
         
-        col1, col2 = st.columns(2)
+        dashboard_url = os.getenv('DASHBOARD_URL', 'http://localhost:8501')
         
-        with col1:
-            if st.button("📨 Send Test Email", type="primary", use_container_width=True):
-                test_recipient = recipients[0] if recipients else None
-                if test_recipient:
-                    smtp_config = {
-                        'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
-                        'smtp_port': int(os.getenv('SMTP_PORT', 587)),
-                        'smtp_user': os.getenv('SMTP_USER', ''),
-                        'smtp_password': os.getenv('SMTP_PASSWORD', ''),
-                        'from_email': os.getenv('ALERT_FROM_EMAIL', '')
-                    }
-                    
-                    test_body = f"""
-                    <p><strong>✅ Test Email Successful!</strong></p>
-                    <p>Your SMTP configuration is working correctly.</p>
-                    <p style="color: #666; font-size: 12px;">
-                        Sent to: {test_recipient}<br>
-                        Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-                    </p>
-                    """
-                    
-                    with st.spinner("Sending..."):
-                        success, message = send_email_alert(
-                            smtp_config, 
-                            test_recipient, 
-                            "Test Alert from ROI Dashboard", 
-                            test_body
-                        )
-                        
-                        if success:
-                            st.success(f"✅ Sent to {test_recipient}")
-                        else:
-                            st.error(f"❌ Failed: {message}")
+        if st.button("▶️ Test with Current Numbers", type="primary", use_container_width=True):
+            smtp_config = {
+                'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+                'smtp_port': int(os.getenv('SMTP_PORT', 587)),
+                'smtp_user': os.getenv('SMTP_USER', ''),
+                'smtp_password': os.getenv('SMTP_PASSWORD', ''),
+                'from_email': os.getenv('ALERT_FROM_EMAIL', '')
+            }
+            
+            alert_config = {
+                'dashboard_url': dashboard_url,
+                'to_emails': recipients
+            }
+            
+            with st.spinner("Checking usage..."):
+                alerts_sent, alerts_skipped = check_and_send_alerts(df, smtp_config, alert_config)
+                
+                if alerts_sent:
+                    st.success(f"✅ Sent {len(alerts_sent)} alert(s)")
+                    for alert in alerts_sent:
+                        st.caption(f"• {alert['project']}: Yesterday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
                 else:
-                    st.error("No recipients configured")
-        
-        with col2:
-            if st.button("▶️ Check & Send Alerts", type="secondary", use_container_width=True):
-                smtp_config = {
-                    'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
-                    'smtp_port': int(os.getenv('SMTP_PORT', 587)),
-                    'smtp_user': os.getenv('SMTP_USER', ''),
-                    'smtp_password': os.getenv('SMTP_PASSWORD', ''),
-                    'from_email': os.getenv('ALERT_FROM_EMAIL', '')
-                }
-                
-                alert_config = {
-                    'dashboard_url': 'http://localhost:8501',
-                    'to_emails': recipients
-                }
-                
-                with st.spinner("Checking..."):
-                    alerts_sent, alerts_skipped = check_and_send_alerts(df, smtp_config, alert_config)
-                    
-                    if alerts_sent:
-                        st.success(f"✅ Sent {len(alerts_sent)} alert(s)")
-                        for alert in alerts_sent:
-                            st.caption(f"• {alert['project']}: Yesterday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
-                    else:
-                        st.info("No alerts needed")
+                    st.info("No alerts needed")
         
         st.markdown("---")
         
