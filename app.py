@@ -28,8 +28,46 @@ MONTHS_FR = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin',
              'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre']
 MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June',
              'July', 'August', 'September', 'October', 'November', 'December']
+
+# Chart styling - clean, legible, light theme
+CHART_LAYOUT = dict(
+    paper_bgcolor='rgba(255,255,255,1)',
+    plot_bgcolor='rgba(248,249,250,1)',
+    font=dict(family='Inter, system-ui, sans-serif', size=13, color='#1a1a2e'),
+    margin=dict(l=60, r=40, t=50, b=60),
+    xaxis=dict(
+        showgrid=True,
+        gridcolor='rgba(0,0,0,0.08)',
+        zeroline=False,
+        tickfont=dict(size=12),
+        title_font=dict(size=14),
+    ),
+    yaxis=dict(
+        showgrid=True,
+        gridcolor='rgba(0,0,0,0.08)',
+        zeroline=False,
+        tickfont=dict(size=12),
+        title_font=dict(size=14),
+    ),
+    legend=dict(
+        font=dict(size=12),
+        bgcolor='rgba(255,255,255,0.9)',
+        bordercolor='rgba(0,0,0,0.1)',
+        borderwidth=1,
+    ),
+    hoverlabel=dict(
+        bgcolor='white',
+        font_size=13,
+        font_family='sans-serif',
+    ),
+)
+CHART_COLORS = [
+    '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed',
+    '#0891b2', '#ea580c', '#db2777', '#4f46e5', '#0d9488',
+]
 CUSTOM_COLUMNS_FILE = 'custom_columns_config.json'
-CUSTOM_PROJECTS_FILE = 'custom_projects.json'
+CELL_OVERRIDES_FILE = 'cell_overrides.json'
+HIDDEN_PROJECTS_FILE = 'hidden_projects.json'
 
 # Initialize Supabase client
 @st.cache_resource
@@ -92,49 +130,30 @@ def add_custom_calculated_columns(df, config):
     
     return df
 
-def load_custom_projects():
-    """Load custom projects configuration"""
-    if os.path.exists(CUSTOM_PROJECTS_FILE):
-        with open(CUSTOM_PROJECTS_FILE, 'r') as f:
+def load_cell_overrides():
+    """Load cell-level overrides (user edits from the table)"""
+    if os.path.exists(CELL_OVERRIDES_FILE):
+        with open(CELL_OVERRIDES_FILE, 'r') as f:
             return json.load(f)
-    return {"custom_projects": []}
+    return {}
 
-def save_custom_projects(projects_config):
-    """Save custom projects configuration"""
-    with open(CUSTOM_PROJECTS_FILE, 'w') as f:
-        json.dump(projects_config, f, indent=2)
+def save_cell_overrides(overrides):
+    """Save cell-level overrides"""
+    with open(CELL_OVERRIDES_FILE, 'w') as f:
+        json.dump(overrides, f, indent=2)
 
-def add_custom_projects_to_data(df):
-    """Add manually created custom projects to the dataframe"""
-    custom_projects_config = load_custom_projects()
-    custom_projects = custom_projects_config.get('custom_projects', [])
-    
-    if not custom_projects:
-        return df
-    
-    # Convert custom projects to dataframe rows
-    for project in custom_projects:
-        project_row = {
-            'COMPANY': project.get('company', 'Custom'),
-            'CLIENT': project.get('client', project.get('company', 'Custom')),
-            'PROJECT': project.get('project_name', 'Unnamed Project'),
-            'Investment': project.get('investment'),
-            'Monthly ROI Goal': project.get('monthly_roi_goal'),
-            'Client Hourly Rate': project.get('hourly_rate'),
-            'Minutes Saved per usage': project.get('minutes_saved'),
-            'Month Activated': project.get('month_activated'),
-            'Usage Type': project.get('usage_type'),
-            'Months Active': None
-        }
-        
-        # Add monthly usage data (from manual input or zeros)
-        for month in MONTHS_FR:
-            project_row[month] = project.get('monthly_usage', {}).get(month, 0)
-        
-        # Add to dataframe
-        df = pd.concat([df, pd.DataFrame([project_row])], ignore_index=True)
-    
-    return df
+def load_hidden_projects():
+    """Load list of hidden project keys (COMPANY_PROJECT)"""
+    if os.path.exists(HIDDEN_PROJECTS_FILE):
+        with open(HIDDEN_PROJECTS_FILE, 'r') as f:
+            data = json.load(f)
+            return set(data.get('hidden', []))
+    return set()
+
+def save_hidden_projects(hidden_set):
+    """Save hidden project keys"""
+    with open(HIDDEN_PROJECTS_FILE, 'w') as f:
+        json.dump({'hidden': list(hidden_set)}, f, indent=2)
 
 @st.cache_data
 def load_excel_metadata():
@@ -384,9 +403,6 @@ def main():
         st.error("No data found in Supabase. Please check your configuration and database.")
         return
     
-    # Add custom projects (manual entries)
-    df = add_custom_projects_to_data(df)
-    
     # Calculate metrics
     df_metrics = calculate_metrics(df)
     
@@ -395,24 +411,29 @@ def main():
     df_metrics = add_custom_data_columns(df_metrics, custom_config)
     df_metrics = add_custom_calculated_columns(df_metrics, custom_config)
     
-    # Sidebar - Filters
+    # Filter out hidden projects
+    hidden_projects = load_hidden_projects()
+    df_metrics['_project_key'] = df_metrics.apply(lambda r: f"{r['COMPANY']}_{r['PROJECT']}", axis=1)
+    visible_df = df_metrics[~df_metrics['_project_key'].isin(hidden_projects)].drop(columns=['_project_key'])
+    
+    # Sidebar - Filters (built from visible projects only)
     st.sidebar.header("Filters")
     
-    companies = ['All'] + sorted(df_metrics['COMPANY'].unique().tolist())
-    selected_company = st.sidebar.selectbox("Filter by Company", companies)
-    
-    clients = ['All'] + sorted(df_metrics['CLIENT'].dropna().unique().tolist())
+    clients = ['All'] + sorted(visible_df['CLIENT'].dropna().unique().tolist())
     selected_client = st.sidebar.selectbox("Filter by Client", clients)
     
-    status_options = ['All'] + sorted(df_metrics['roi_status'].unique().tolist())
+    projects = ['All'] + sorted(visible_df['PROJECT'].dropna().unique().tolist())
+    selected_project = st.sidebar.selectbox("Filter by Project", projects)
+    
+    status_options = ['All'] + sorted(visible_df['roi_status'].unique().tolist())
     selected_status = st.sidebar.selectbox("Filter by ROI Status", status_options)
     
-    # Apply filters
-    filtered_df = df_metrics.copy()
-    if selected_company != 'All':
-        filtered_df = filtered_df[filtered_df['COMPANY'] == selected_company]
+    # Apply filters (from visible projects)
+    filtered_df = visible_df.copy()
     if selected_client != 'All':
         filtered_df = filtered_df[filtered_df['CLIENT'] == selected_client]
+    if selected_project != 'All':
+        filtered_df = filtered_df[filtered_df['PROJECT'] == selected_project]
     if selected_status != 'All':
         filtered_df = filtered_df[filtered_df['roi_status'] == selected_status]
     
@@ -469,34 +490,56 @@ def main():
             help="Projects with usage drops or inactive"
         )
     
-    # Alert section for projects needing attention
+    st.markdown("---")
+    
+    # Dedicated section: Projects Requiring Attention
     if needs_attention > 0:
-        st.warning(f"**{needs_attention} project(s) need attention!**")
+        st.markdown("## Projects Requiring Attention")
+        st.caption("Usage drops, inactive, or no recent usage — these projects may need follow-up.")
+        
         alert_df = filtered_df[
             filtered_df['roi_status'].str.contains('Dropped|Inactive|No Recent', na=False)
-        ][['CLIENT', 'PROJECT', 'roi_status', 'historical_monthly_avg', 'recent_monthly_avg', 'usage_drop_percent']]
+        ].copy()
         
-        st.markdown("### Projects Requiring Immediate Attention")
-        for _, row in alert_df.iterrows():
-            with st.expander(f"{row['CLIENT']} - {row['PROJECT']}", expanded=True):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Status", row['roi_status'])
-                with col2:
-                    st.metric("Was Averaging", f"{row['historical_monthly_avg']:.1f}/mo")
-                with col3:
-                    st.metric("Now Averaging", f"{row['recent_monthly_avg']:.1f}/mo", 
-                             delta=f"-{row['usage_drop_percent']:.0f}%" if row['usage_drop_percent'] > 0 else f"{row['usage_drop_percent']:.0f}%")
-                
-                if row['usage_drop_percent'] > 50:
-                    st.error(f"Usage has dropped by {row['usage_drop_percent']:.0f}% from historical average")
+        # Compact summary table
+        summary_cols = ['CLIENT', 'PROJECT', 'roi_status', 'historical_monthly_avg', 'recent_monthly_avg', 'usage_drop_percent']
+        summary_df = alert_df[[c for c in summary_cols if c in alert_df.columns]].copy()
+        rename_map = {
+            'CLIENT': 'Client', 'PROJECT': 'Project', 'roi_status': 'Status',
+            'historical_monthly_avg': 'Was (avg/mo)', 'recent_monthly_avg': 'Now (avg/mo)',
+            'usage_drop_percent': 'Drop %'
+        }
+        summary_df = summary_df.rename(columns={k: v for k, v in rename_map.items() if k in summary_df.columns})
+        if 'Was (avg/mo)' in summary_df.columns:
+            summary_df['Was (avg/mo)'] = summary_df['Was (avg/mo)'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "—")
+        if 'Now (avg/mo)' in summary_df.columns:
+            summary_df['Now (avg/mo)'] = summary_df['Now (avg/mo)'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "—")
+        if 'Drop %' in summary_df.columns:
+            summary_df['Drop %'] = summary_df['Drop %'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "—")
         
-        st.markdown("---")
+        st.dataframe(summary_df, use_container_width=True, hide_index=True, height=min(120 + len(alert_df) * 38, 400))
+        
+        # Expandable details per project
+        with st.expander("View details for each project", expanded=False):
+            for _, row in alert_df.iterrows():
+                with st.container():
+                    st.markdown(f"**{row['CLIENT']} — {row['PROJECT']}**")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.metric("Status", row['roi_status'])
+                    with c2:
+                        st.metric("Was averaging", f"{row['historical_monthly_avg']:.1f}/mo")
+                    with c3:
+                        st.metric("Now averaging", f"{row['recent_monthly_avg']:.1f}/mo", 
+                                 delta=f"-{row['usage_drop_percent']:.0f}%" if row['usage_drop_percent'] > 0 else f"{row['usage_drop_percent']:.0f}%")
+                    if row['usage_drop_percent'] > 50:
+                        st.error(f"Usage dropped {row['usage_drop_percent']:.0f}% from historical average")
+                    st.markdown("---")
     
     st.markdown("---")
     
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Portfolio Overview", "Analytics", "Solution Details", "Settings"])
+    tab1, tab2, tab3 = st.tabs(["Portfolio Overview", "Solution Details", "Settings"])
     
     with tab1:
         st.subheader("Portfolio Overview")
@@ -611,12 +654,47 @@ def main():
         if 'Total Saved' in display_table.columns:
             display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
         
-        st.dataframe(
+        # Apply cell overrides (user edits from previous sessions)
+        cell_overrides = load_cell_overrides()
+        for idx, row in display_table.iterrows():
+            row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+            if row_key in cell_overrides:
+                for col, val in cell_overrides[row_key].items():
+                    if col in display_table.columns and val is not None:
+                        display_table.at[idx, col] = val
+        
+        # Editable table - click any cell to edit; changes are saved automatically
+        st.caption("💡 Click any cell to edit. Changes are saved automatically.")
+        edited_table = st.data_editor(
             display_table,
             use_container_width=True,
             height=400,
-            hide_index=True
+            hide_index=True,
+            key="portfolio_table_editor"
         )
+        
+        # Persist edits when user changes cells
+        if edited_table is not None:
+            has_changes = False
+            for idx in display_table.index:
+                row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+                if row_key not in cell_overrides:
+                    cell_overrides[row_key] = {}
+                for col in display_table.columns:
+                    orig = display_table.at[idx, col]
+                    new_val = edited_table.at[idx, col]
+                    orig_str = "" if pd.isna(orig) else str(orig)
+                    new_str = "" if pd.isna(new_val) else str(new_val)
+                    if orig_str != new_str:
+                        has_changes = True
+                        # Store JSON-serializable value
+                        stored = None if pd.isna(new_val) else (new_val if isinstance(new_val, (str, int, float, bool)) else str(new_val))
+                        cell_overrides[row_key][col] = stored
+            if has_changes:
+                cell_overrides = {k: {c: v for c, v in vals.items() if v is not None} for k, vals in cell_overrides.items()}
+                cell_overrides = {k: v for k, v in cell_overrides.items() if v}
+                save_cell_overrides(cell_overrides)
+                st.rerun()
         
         # Add legends and explanations
         col1, col2 = st.columns(2)
@@ -654,168 +732,6 @@ def main():
             """)
     
     with tab2:
-        st.subheader("Analytics & Trends")
-        
-        # Monthly usage trends - Enhanced
-        st.markdown("### Usage Per Month (All Projects)")
-        
-        # Prepare monthly data for plotting with proper year tracking
-        monthly_data = []
-        available_months = [m for m in MONTHS_FR if m in filtered_df.columns]
-        
-        # Determine year for each month based on chronological order
-        # Assuming data spans from early 2025 to early 2026
-        # You can adjust start_year and start_month based on your actual data
-        start_year = 2025
-        start_month = 4  # April (index 3, but month number is 4)
-        
-        for _, row in filtered_df.iterrows():
-            for month in available_months:
-                month_idx = MONTHS_FR.index(month)
-                month_num = month_idx + 1  # Convert 0-indexed to 1-indexed month
-                
-                # Determine year: if month_num < start_month, it's likely next year
-                if month_num < start_month:
-                    year = start_year + 1
-                else:
-                    year = start_year
-                
-                monthly_data.append({
-                    'Client': row['CLIENT'],
-                    'Project': row['PROJECT'],
-                    'Full_Label': f"{row['CLIENT']} - {row['PROJECT']}",
-                    'Month': MONTHS_EN[month_idx],
-                    'Year': year,
-                    'Date_Sort': f"{year}-{month_num:02d}",  # YYYY-MM for sorting
-                    'Month_Year_Label': f"{MONTHS_EN[month_idx]} {year}",
-                    'Usage': row[month]
-                })
-        
-        if monthly_data:
-            monthly_df = pd.DataFrame(monthly_data)
-            
-            # Sort chronologically
-            monthly_df = monthly_df.sort_values('Date_Sort')
-            
-            # Overall usage trend by month
-            st.markdown("#### Total Usage Across All Projects")
-            monthly_total = monthly_df.groupby(['Month_Year_Label', 'Date_Sort'])['Usage'].sum().reset_index()
-            monthly_total = monthly_total.sort_values('Date_Sort')
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=monthly_total['Month_Year_Label'],
-                y=monthly_total['Usage'],
-                mode='lines+markers',
-                name='Total Usage',
-                line=dict(color='#1f77b4', width=3),
-                marker=dict(size=10),
-                fill='tozeroy',
-                fillcolor='rgba(31, 119, 180, 0.2)'
-            ))
-            fig.update_layout(
-                xaxis_title="Month",
-                yaxis_title="Total Usage Count",
-                height=400,
-                hovermode='x unified'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Individual project trends
-            st.markdown("#### Usage by Project")
-            
-            # Get chronological order for x-axis
-            month_order = monthly_df.sort_values('Date_Sort')['Month_Year_Label'].unique().tolist()
-            
-            fig = px.line(
-                monthly_df,
-                x='Month_Year_Label',
-                y='Usage',
-                color='Full_Label',
-                markers=True,
-                labels={'Usage': 'Usage Count', 'Month_Year_Label': 'Month', 'Full_Label': 'Project'},
-                height=500
-            )
-            fig.update_layout(
-                xaxis={'categoryorder': 'array', 'categoryarray': month_order},
-                hovermode='x unified',
-                legend=dict(
-                    orientation="v",
-                    yanchor="top",
-                    y=1,
-                    xanchor="left",
-                    x=1.02
-                )
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("---")
-        
-        # Top performers and distribution
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Top 5 by Savings (This Month)")
-            top_savings = filtered_df.nlargest(5, 'cost_saved_30d')[['CLIENT', 'PROJECT', 'cost_saved_30d']]
-            top_savings['label'] = top_savings['CLIENT'] + ' - ' + top_savings['PROJECT']
-            fig = px.bar(
-                top_savings, 
-                x='cost_saved_30d', 
-                y='label',
-                orientation='h',
-                color='CLIENT',
-                labels={'cost_saved_30d': 'Savings ($)', 'label': ''},
-                height=300
-            )
-            fig.update_layout(showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            st.markdown("#### Project Status Distribution")
-            status_counts = filtered_df['roi_status'].value_counts()
-            fig = px.pie(
-                values=status_counts.values,
-                names=status_counts.index,
-                height=300
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Savings by company
-        st.markdown("#### Total Savings by Company")
-        company_savings = filtered_df.groupby('COMPANY').agg({
-            'cumulative_cost_saved': 'sum',
-            'project_cost': 'sum'
-        }).reset_index()
-        company_savings['ROI %'] = (company_savings['cumulative_cost_saved'] / company_savings['project_cost'] * 100).round(1)
-        company_savings = company_savings.sort_values('cumulative_cost_saved', ascending=False)
-        
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=company_savings['COMPANY'],
-            y=company_savings['cumulative_cost_saved'],
-            name='Total Saved',
-            marker_color='lightgreen',
-            text=company_savings['cumulative_cost_saved'].apply(lambda x: f'${x:,.0f}'),
-            textposition='outside'
-        ))
-        fig.add_trace(go.Bar(
-            x=company_savings['COMPANY'],
-            y=company_savings['project_cost'],
-            name='Investment',
-            marker_color='lightcoral',
-            text=company_savings['project_cost'].apply(lambda x: f'${x:,.0f}'),
-            textposition='outside'
-        ))
-        fig.update_layout(
-            barmode='group',
-            xaxis_title="Company",
-            yaxis_title="Amount ($)",
-            height=400,
-            showlegend=True
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
         st.subheader("Solution Details")
         
         # Select a solution to drill down
@@ -969,11 +885,23 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
             st.progress(progress_value)
             st.caption(f"${solution_data['cumulative_cost_saved']:,.0f} / ${solution_data['project_cost']:,.0f}")
             
-            # Monthly trend for this solution
+            # Monthly trend for this solution - with year for correct chronological order
             st.markdown("### Monthly Usage Trend")
-            available_months = [m for m in MONTHS_FR if m in solution_data.index]
-            monthly_values = [solution_data[month] for month in available_months]
-            monthly_labels = [MONTHS_EN[MONTHS_FR.index(month)] for month in available_months]
+            start_year, start_month = 2025, 4  # April = start of "year" (Jan-Mar = next year)
+            month_data = []
+            for i, month_fr in enumerate(MONTHS_FR):
+                if month_fr not in solution_data.index:
+                    continue
+                month_num = i + 1
+                year = start_year + 1 if month_num < start_month else start_year
+                month_data.append({
+                    'label': f"{MONTHS_EN[i][:3]} {year}",  # "Apr 2025", "Jan 2026"
+                    'value': solution_data[month_fr],
+                    'sort_key': f"{year}-{month_num:02d}",
+                })
+            month_data.sort(key=lambda x: x['sort_key'])
+            monthly_labels = [d['label'] for d in month_data]
+            monthly_values = [d['value'] for d in month_data]
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(
@@ -981,14 +909,18 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                 y=monthly_values,
                 mode='lines+markers',
                 name='Usage',
-                line=dict(color='#1f77b4', width=3),
-                marker=dict(size=8)
+                line=dict(color=CHART_COLORS[0], width=3),
+                marker=dict(size=10, line=dict(width=2, color='white')),
+                fill='tozeroy',
+                fillcolor='rgba(37, 99, 235, 0.12)',
+                hovertemplate='%{x}<br><b>%{y:,.0f}</b> usages<extra></extra>',
             ))
             fig.update_layout(
+                **CHART_LAYOUT,
                 xaxis_title="Month",
                 yaxis_title="Usage Count",
-                height=300,
-                showlegend=False
+                height=340,
+                showlegend=False,
             )
             st.plotly_chart(fig, use_container_width=True)
             
@@ -1002,11 +934,76 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         else:
             st.info("No solutions available with current filters.")
     
-    with tab4:
+    with tab3:
         st.subheader("Custom Columns & Settings")
         
         # Load config
         custom_config = load_custom_columns_config()
+        
+        st.markdown("---")
+        
+        # Section 0: Hidden Projects
+        st.markdown("### Hidden Projects")
+        st.caption("Hide projects from the entire dashboard. They won't appear in the table, metrics, or filters.")
+        
+        # Show hidden projects with Unhide button
+        if hidden_projects:
+            st.markdown("#### Currently Hidden")
+            if st.button("Unhide All", key="unhide_all"):
+                save_hidden_projects(set())
+                st.success("All projects unhidden!")
+                st.rerun()
+            for key in sorted(hidden_projects):
+                display_name = key.replace('_', ' - ', 1)  # Fallback if project no longer in data
+                if '_project_key' in df_metrics.columns:
+                    row_match = df_metrics[df_metrics['_project_key'] == key]
+                    if not row_match.empty:
+                        display_name = f"{row_match.iloc[0]['CLIENT']} - {row_match.iloc[0]['PROJECT']}"
+                if st.button(f"Unhide: {display_name}", key=f"unhide_{key}"):
+                    hidden_projects.remove(key)
+                    save_hidden_projects(hidden_projects)
+                    st.rerun()
+        else:
+            st.caption("No projects hidden.")
+        
+        # Hide a project dropdown
+        st.markdown("#### Hide a Project")
+        visible_options = [f"{row['CLIENT']} - {row['PROJECT']}" for _, row in visible_df.iterrows()]
+        if visible_options:
+            project_to_hide = st.selectbox(
+                "Select project to hide",
+                options=[""] + visible_options,
+                key="hide_project_select",
+                format_func=lambda x: "Choose..." if x == "" else x,
+            )
+            if project_to_hide and st.button("Hide Project"):
+                # Find the key for selected project
+                for _, row in visible_df.iterrows():
+                    if f"{row['CLIENT']} - {row['PROJECT']}" == project_to_hide:
+                        key = f"{row['COMPANY']}_{row['PROJECT']}"
+                        hidden_projects.add(key)
+                        save_hidden_projects(hidden_projects)
+                        st.success(f"Hidden '{project_to_hide}'")
+                        st.rerun()
+                        break
+        else:
+            st.caption("All projects are already hidden or no projects available.")
+        
+        st.markdown("---")
+        
+        # Section 1: Table cell overrides
+        st.markdown("### Table Cell Overrides")
+        st.caption("Edits you make in the Portfolio Overview table are saved here. Clear to reset all custom cell values.")
+        if os.path.exists(CELL_OVERRIDES_FILE):
+            overrides = load_cell_overrides()
+            override_count = sum(len(v) for v in overrides.values())
+            st.caption(f"Currently {override_count} cell override(s) across {len(overrides)} project(s).")
+            if st.button("Clear All Table Edits", key="clear_overrides"):
+                save_cell_overrides({})
+                st.success("All table edits cleared!")
+                st.rerun()
+        else:
+            st.caption("No cell overrides yet.")
         
         st.markdown("---")
         
@@ -1178,92 +1175,5 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                 else:
                     st.info("No alerts needed")
         
-        st.markdown("---")
-        
-        # Section 5: Custom Projects/Rows
-        st.markdown("### Custom Projects")
-        st.caption("Add manual project entries that don't have Supabase data")
-        
-        # Load custom projects
-        projects_config = load_custom_projects()
-        
-        with st.expander("Add New Project", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                new_company = st.text_input("Company", key="new_proj_company")
-                new_project = st.text_input("Project Name", key="new_proj_name")
-                new_investment = st.number_input("Investment ($)", min_value=0, key="new_proj_inv")
-                new_roi_goal = st.number_input("Monthly ROI Goal ($)", min_value=0, key="new_proj_roi")
-            
-            with col2:
-                new_hourly_rate = st.number_input("Hourly Rate ($)", min_value=0, key="new_proj_rate")
-                new_minutes = st.number_input("Minutes Saved per Usage", min_value=0, key="new_proj_mins")
-                new_usage_type = st.text_input("Usage Type", key="new_proj_type")
-                new_activated = st.date_input("Month Activated", key="new_proj_date")
-            
-            if st.button("Add Project"):
-                if new_company and new_project:
-                    new_proj = {
-                        'company': new_company,
-                        'client': new_company,
-                        'project_name': new_project,
-                        'investment': new_investment if new_investment > 0 else None,
-                        'monthly_roi_goal': new_roi_goal if new_roi_goal > 0 else None,
-                        'hourly_rate': new_hourly_rate if new_hourly_rate > 0 else None,
-                        'minutes_saved': new_minutes if new_minutes > 0 else None,
-                        'usage_type': new_usage_type if new_usage_type else None,
-                        'month_activated': str(new_activated) if new_activated else None,
-                        'monthly_usage': {}
-                    }
-                    projects_config['custom_projects'].append(new_proj)
-                    save_custom_projects(projects_config)
-                    st.success(f"Added project '{new_project}'!")
-                    st.rerun()
-                else:
-                    st.error("Please enter at least Company and Project Name")
-        
-        # Show existing custom projects
-        if projects_config['custom_projects']:
-            st.markdown("#### Existing Custom Projects")
-            for idx, project in enumerate(projects_config['custom_projects']):
-                col1, col2, col3 = st.columns([3, 1, 1])
-                with col1:
-                    st.text(f"{project['company']} - {project['project_name']}")
-                with col2:
-                    if st.button("Edit Usage", key=f"edit_proj_{idx}"):
-                        st.session_state[f'editing_project_{idx}'] = True
-                with col3:
-                    if st.button("Delete", key=f"del_proj_{idx}"):
-                        projects_config['custom_projects'].pop(idx)
-                        save_custom_projects(projects_config)
-                        st.success("Deleted project!")
-                        st.rerun()
-                
-                # Edit monthly usage
-                if st.session_state.get(f'editing_project_{idx}', False):
-                    with st.expander(f"Edit monthly usage for {project['project_name']}", expanded=True):
-                        st.caption("Enter usage counts for each month")
-                        cols = st.columns(4)
-                        
-                        for i, month in enumerate(MONTHS_EN):
-                            with cols[i % 4]:
-                                month_fr = MONTHS_FR[i]
-                                current_val = project.get('monthly_usage', {}).get(month_fr, 0)
-                                new_val = st.number_input(
-                                    month,
-                                    min_value=0,
-                                    value=int(current_val),
-                                    key=f"usage_{idx}_{month}"
-                                )
-                                if 'monthly_usage' not in projects_config['custom_projects'][idx]:
-                                    projects_config['custom_projects'][idx]['monthly_usage'] = {}
-                                projects_config['custom_projects'][idx]['monthly_usage'][month_fr] = new_val
-                        
-                        if st.button("Save Usage Data", key=f"save_proj_{idx}"):
-                            save_custom_projects(projects_config)
-                            st.session_state[f'editing_project_{idx}'] = False
-                            st.success("Saved!")
-                            st.rerun()
-
 if __name__ == "__main__":
     main()
