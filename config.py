@@ -41,7 +41,7 @@ COMPANY_CONFIGS = {
             "ACCOUNTS PAYABLE": {
                 "supabase_table": "genia_analytics_cellcom_accountspayable",
                 "usage_field": "extraction_validated",
-                "value_type": "boolean",
+                "value_type": "numeric",
                 "investment": None,
                 "monthly_roi_goal": None,
                 "hourly_rate": None,

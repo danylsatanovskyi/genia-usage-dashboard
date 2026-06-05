@@ -50,53 +50,84 @@ def load_excel_metadata():
         return {}
 
 
+def _fetch_all_rows(supabase, table_name):
+    """Fetch all rows from a Supabase table, paginating past the 1000-row default limit."""
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        response = supabase.table(table_name).select("*").range(offset, offset + page_size - 1).execute()
+        if not response.data:
+            break
+        all_rows.extend(response.data)
+        if len(response.data) < page_size:
+            break
+        offset += page_size
+    return all_rows
+
+
+def _count_usage(series, value_type):
+    """Count usage from a series regardless of dtype (bool, int, object/string)."""
+    if value_type != "boolean":
+        return pd.to_numeric(series, errors='coerce').sum()
+    # Handle bool, int (0/1), and object ("True"/"False" strings)
+    if series.dtype == bool:
+        return series.sum()
+    return (series == True).sum()
+
+
 def load_data(supabase, company_configs):
     """Load data from Supabase - same logic as app"""
     excel_metadata = load_excel_metadata()
     all_data = []
-    
+
     for company_name, company_config in company_configs.items():
         for project_name, project_config in company_config['projects'].items():
             try:
                 table_name = project_config['supabase_table']
                 usage_field = project_config['usage_field']
                 value_type = project_config.get('value_type', 'boolean')
-                
-                response = supabase.table(table_name).select("*").execute()
-                
-                if not response.data:
+
+                rows = _fetch_all_rows(supabase, table_name)
+
+                if not rows:
                     continue
-                
-                records_df = pd.DataFrame(response.data)
-                records_df['created_at'] = pd.to_datetime(records_df['created_at'], errors='coerce')
-                records_df = records_df[records_df['created_at'].notna()]
-                
-                records_df['month'] = records_df['created_at'].dt.month
-                records_df['year'] = records_df['created_at'].dt.year
-                records_df['date'] = records_df['created_at'].dt.date
-                
-                yesterday = date.today() - timedelta(days=1)
-                yesterday_records = records_df[records_df['date'] == yesterday]
-                
-                if value_type == "boolean":
-                    if usage_field in yesterday_records.columns:
-                        usage_yesterday = yesterday_records[usage_field].sum() if yesterday_records[usage_field].dtype == bool else len(yesterday_records[yesterday_records[usage_field] == True])
-                    else:
-                        usage_yesterday = 0
+
+                records_df = pd.DataFrame(rows)
+
+                # Use 'date' or 'processed_date' if present (actual usage time), else fall back to 'created_at'
+                if 'date' in records_df.columns:
+                    date_col = 'date'
+                elif 'processed_date' in records_df.columns:
+                    date_col = 'processed_date'
                 else:
-                    usage_yesterday = yesterday_records[usage_field].sum() if usage_field in yesterday_records.columns else 0
-                
+                    date_col = 'created_at'
+                records_df[date_col] = pd.to_datetime(records_df[date_col], errors='coerce')
+                records_df = records_df[records_df[date_col].notna()]
+
+                records_df['_month'] = records_df[date_col].dt.month
+                records_df['_year'] = records_df[date_col].dt.year
+                records_df['_date'] = records_df[date_col].dt.date
+
+                yesterday = date.today() - timedelta(days=1)
+                yesterday_records = records_df[records_df['_date'] == yesterday]
+
+                if usage_field in yesterday_records.columns:
+                    usage_yesterday = _count_usage(yesterday_records[usage_field], value_type)
+                else:
+                    usage_yesterday = 0
+
+                current_year = date.today().year
+                current_month = date.today().month
                 monthly_usage = {}
                 for month_idx in range(12):
+                    month_num = month_idx + 1
+                    year = current_year if month_num <= current_month else current_year - 1
                     month_name = MONTHS_FR[month_idx]
                     month_records = records_df[
-                        ((records_df['month'] == month_idx + 1) & (records_df['year'] == 2025)) |
-                        ((records_df['month'] == month_idx + 1) & (records_df['year'] == 2026))
+                        (records_df['_month'] == month_num) & (records_df['_year'] == year)
                     ]
-                    if value_type == "boolean":
-                        usage_count = month_records[usage_field].sum() if usage_field in month_records.columns else 0
-                    else:
-                        usage_count = month_records[usage_field].sum() if usage_field in month_records.columns else 0
+                    usage_count = _count_usage(month_records[usage_field], value_type) if usage_field in month_records.columns else 0
                     monthly_usage[month_name] = usage_count
                 
                 project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
@@ -114,7 +145,7 @@ def load_data(supabase, company_configs):
                     'Month Activated': metadata.get('Month Activated'),
                     'Usage Type': usage_type_override or metadata.get('Usage Type'),
                     'Months Active': metadata.get('Months Active'),
-                    'usage_yesterday': usage_yesterday
+                    'usage_yesterday': usage_yesterday,
                 }
                 project_row.update(monthly_usage)
                 all_data.append(project_row)
@@ -134,19 +165,19 @@ def calculate_metrics(df):
         return df
     
     current_month_idx = datetime.now().month - 1
-    
+
     df['usage_last_30_days'] = df[MONTHS_FR[current_month_idx]] if MONTHS_FR[current_month_idx] in df.columns else 0
-    
+
     month_cols_3mo = []
-    for i in range(3):
+    for i in range(1, 4):
         month_idx = (current_month_idx - i) % 12
         if MONTHS_FR[month_idx] in df.columns:
             month_cols_3mo.append(MONTHS_FR[month_idx])
     df['usage_last_3_months'] = df[month_cols_3mo].sum(axis=1) if month_cols_3mo else 0
-    
+
     available_months = [m for m in MONTHS_FR if m in df.columns]
     df['usage_last_12_months'] = df[available_months].sum(axis=1) if available_months else 0
-    
+
     def get_historical_avg(row):
         usage_values = [row[m] for m in available_months if pd.notna(row.get(m)) and row.get(m, 0) > 0]
         if len(usage_values) >= 6:

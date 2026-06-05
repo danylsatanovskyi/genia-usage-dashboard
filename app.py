@@ -228,22 +228,18 @@ def calculate_metrics(df):
     if df.empty:
         return df
     
-    # Get current month index (February 2026 = index 1)
     current_month_idx = datetime.now().month - 1  # 0-indexed
-    
-    # Calculate usage for each timeframe
+    available_months = [m for m in MONTHS_FR if m in df.columns]
+
     df['usage_last_30_days'] = df[MONTHS_FR[current_month_idx]] if current_month_idx < 12 else 0
-    
-    # Last 3 months usage
+
     month_cols_3mo = []
-    for i in range(3):
+    for i in range(1, 4):
         month_idx = (current_month_idx - i) % 12
         if MONTHS_FR[month_idx] in df.columns:
             month_cols_3mo.append(MONTHS_FR[month_idx])
     df['usage_last_3_months'] = df[month_cols_3mo].sum(axis=1) if month_cols_3mo else 0
-    
-    # Last 12 months usage (all available months)
-    available_months = [m for m in MONTHS_FR if m in df.columns]
+
     df['usage_last_12_months'] = df[available_months].sum(axis=1) if available_months else 0
     
     # Historical average (first 6 months of data vs last 3 months)
@@ -551,8 +547,8 @@ def main():
                 "Sort by",
                 ['usage_last_30_days', 'cost_saved_30d', 'roi_progress_percent', 'mom_usage_percent'],
                 format_func=lambda x: {
-                    'usage_last_30_days': 'Usage (Last 30d)',
-                    'cost_saved_30d': 'Savings (Last 30d)',
+                    'usage_last_30_days': 'Usage (This Month)',
+                    'cost_saved_30d': 'Saved (This Month)',
                     'roi_progress_percent': 'ROI Progress %',
                     'mom_usage_percent': 'MoM Change %'
                 }[x]
@@ -607,16 +603,16 @@ def main():
             'Investment': 'Investment',
             'Usage Type': 'What We Count',
             'usage_yesterday': 'Yesterday',
-            'usage_last_30_days': 'Usage (30d)',
-            'usage_last_3_months': 'Usage (3mo)',
-            'usage_last_12_months': 'Usage (12mo)',
-            'time_saved_hours_30d': 'Hours Saved (30d)',
-            'time_saved_hours_3mo': 'Hours Saved (3mo)',
-            'time_saved_hours_12mo': 'Hours Saved (12mo)',
+            'usage_last_30_days': 'Usage (This Month)',
+            'usage_last_3_months': 'Usage (Last 3 Months)',
+            'usage_last_12_months': 'Usage (Last 12 Months)',
+            'time_saved_hours_30d': 'Hours Saved (This Month)',
+            'time_saved_hours_3mo': 'Hours Saved (Last 3 Months)',
+            'time_saved_hours_12mo': 'Hours Saved (Last 12 Months)',
             'Monthly ROI Goal': 'Monthly Target',
-            'cost_saved_30d': 'Saved This Month',
-            'cost_saved_3mo': 'Saved (3mo)',
-            'cost_saved_12mo': 'Saved (12mo)',
+            'cost_saved_30d': 'Saved (This Month)',
+            'cost_saved_3mo': 'Saved (Last 3 Months)',
+            'cost_saved_12mo': 'Saved (Last 12 Months)',
             'roi_goal_achieved': 'Target Met?',
             'cumulative_cost_saved': 'Total Saved',
             'roi_reached': 'ROI Reached?',
@@ -631,26 +627,26 @@ def main():
             display_table['Investment'] = display_table['Investment'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
         if 'Yesterday' in display_table.columns:
             display_table['Yesterday'] = display_table['Yesterday'].fillna(0).round(0).astype(int)
-        if 'Usage (30d)' in display_table.columns:
-            display_table['Usage (30d)'] = display_table['Usage (30d)'].round(0).astype(int)
-        if 'Usage (3mo)' in display_table.columns:
-            display_table['Usage (3mo)'] = display_table['Usage (3mo)'].round(0).astype(int)
-        if 'Usage (12mo)' in display_table.columns:
-            display_table['Usage (12mo)'] = display_table['Usage (12mo)'].round(0).astype(int)
-        if 'Hours Saved (30d)' in display_table.columns:
-            display_table['Hours Saved (30d)'] = display_table['Hours Saved (30d)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
-        if 'Hours Saved (3mo)' in display_table.columns:
-            display_table['Hours Saved (3mo)'] = display_table['Hours Saved (3mo)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
-        if 'Hours Saved (12mo)' in display_table.columns:
-            display_table['Hours Saved (12mo)'] = display_table['Hours Saved (12mo)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+        if 'Usage (This Month)' in display_table.columns:
+            display_table['Usage (This Month)'] = display_table['Usage (This Month)'].round(0).astype(int)
+        if 'Usage (Last 3 Months)' in display_table.columns:
+            display_table['Usage (Last 3 Months)'] = display_table['Usage (Last 3 Months)'].round(0).astype(int)
+        if 'Usage (Last 12 Months)' in display_table.columns:
+            display_table['Usage (Last 12 Months)'] = display_table['Usage (Last 12 Months)'].round(0).astype(int)
+        if 'Hours Saved (This Month)' in display_table.columns:
+            display_table['Hours Saved (This Month)'] = display_table['Hours Saved (This Month)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+        if 'Hours Saved (Last 3 Months)' in display_table.columns:
+            display_table['Hours Saved (Last 3 Months)'] = display_table['Hours Saved (Last 3 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+        if 'Hours Saved (Last 12 Months)' in display_table.columns:
+            display_table['Hours Saved (Last 12 Months)'] = display_table['Hours Saved (Last 12 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
         if 'Monthly Target' in display_table.columns:
             display_table['Monthly Target'] = display_table['Monthly Target'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
-        if 'Saved This Month' in display_table.columns:
-            display_table['Saved This Month'] = display_table['Saved This Month'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
-        if 'Saved (3mo)' in display_table.columns:
-            display_table['Saved (3mo)'] = display_table['Saved (3mo)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
-        if 'Saved (12mo)' in display_table.columns:
-            display_table['Saved (12mo)'] = display_table['Saved (12mo)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+        if 'Saved (This Month)' in display_table.columns:
+            display_table['Saved (This Month)'] = display_table['Saved (This Month)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+        if 'Saved (Last 3 Months)' in display_table.columns:
+            display_table['Saved (Last 3 Months)'] = display_table['Saved (Last 3 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+        if 'Saved (Last 12 Months)' in display_table.columns:
+            display_table['Saved (Last 12 Months)'] = display_table['Saved (Last 12 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
         if 'Total Saved' in display_table.columns:
             display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
         
@@ -707,10 +703,10 @@ def main():
             - **Activated**: When the project went live
             - **Investment**: Total project cost
             - **Yesterday**: Usage count from yesterday (complete day)
-            - **Usage (30d/3mo/12mo)**: Usage count for different time periods
+            - **Usage (This Month/Last 3 Months/Last 12 Months)**: Usage count for different time periods
             - **Hours Saved**: Total hours saved for each time period
-            - **Monthly Target**: Dollar savings goal for this month
-            - **Saved This Month/3mo/12mo**: Actual dollar value saved
+            - **Monthly Target**: Dollar savings goal per month
+            - **Saved (This Month/Last 3 Months/Last 12 Months)**: Actual dollar value saved
             - **Target Met?**: Did we achieve the monthly ROI goal? (Yes / No)
             - **Total Saved**: Cumulative savings since project launch
             - **ROI Reached?**: Has total saved exceeded investment? (Yes / No)
@@ -725,7 +721,7 @@ def main():
             - **Below Target**: Less than 70% of target
             - **No Recent Usage**: No usage this month (but was active)
             - **Usage Dropped**: Usage dropped >50% from historical average
-            - **Inactive**: No usage in last 3 months
+            - **Inactive**: No usage this month or last 3 months
             
             **Formula:**
             Savings = Usage × (Minutes/Use ÷ 60) × Hourly Rate
@@ -804,7 +800,7 @@ def main():
             if investment and hourly_rate and mins and all([investment > 0, hourly_rate > 0, mins > 0]):
                 st.markdown("### How Savings Are Calculated")
                 st.code(f"""
-Example for last 30 days:
+Example for this month:
 • Usage Count: {solution_data['usage_last_30_days']:.0f} times
 • Time Saved: {solution_data['usage_last_30_days']:.0f} × {mins:.0f} min = {solution_data['usage_last_30_days'] * mins:.0f} minutes
 • Convert to Hours: {solution_data['usage_last_30_days'] * mins:.0f} min ÷ 60 = {solution_data['time_saved_hours_30d']:.1f} hours
@@ -826,14 +822,14 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
             col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
-                st.metric("Usage (30d)", f"{solution_data['usage_last_30_days']:.0f}")
+                st.metric("Usage (This Month)", f"{solution_data['usage_last_30_days']:.0f}")
             with col2:
                 delta_value = solution_data['mom_usage_percent']
                 st.metric("MoM Change", f"{delta_value:.1f}%", delta=f"{delta_value:.1f}%")
             with col3:
-                st.metric("Hours Saved (30d)", f"{solution_data['time_saved_hours_30d']:.1f}h")
+                st.metric("Hours Saved (This Month)", f"{solution_data['time_saved_hours_30d']:.1f}h")
             with col4:
-                st.metric("Savings (30d)", f"${solution_data['cost_saved_30d']:,.0f}")
+                st.metric("Saved (This Month)", f"${solution_data['cost_saved_30d']:,.0f}")
             with col5:
                 st.metric("ROI Progress", f"{solution_data['roi_progress_percent']:.1f}%")
             
