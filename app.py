@@ -660,7 +660,7 @@ def main():
             hide_cols = ['Investment', 'Activated', 'Monthly Target', 'ROI Reached?', 'Target Met?', 'Overall Status']
             for col in hide_cols:
                 if col in display_table.columns:
-                    display_table.loc[hide_mask, col] = 'Same as Hemy'
+                    display_table.loc[hide_mask, col] = 'Same as HEMY'
 
         # Apply cell overrides (user edits from previous sessions)
         cell_overrides = load_cell_overrides()
