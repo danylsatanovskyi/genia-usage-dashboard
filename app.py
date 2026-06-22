@@ -15,6 +15,7 @@ import json
 import time
 from config import SUPABASE_URL, SUPABASE_KEY, COMPANY_CONFIGS
 from modules.email_alerts import check_and_send_alerts, send_email_alert
+from modules.data_loader import calculate_metrics as _calculate_metrics
 
 # Page config
 st.set_page_config(
@@ -223,152 +224,8 @@ def load_data():
     return _load_data(supabase, COMPANY_CONFIGS)
 
 def calculate_metrics(df):
-    """Calculate usage, savings, and ROI metrics"""
-    
-    if df.empty:
-        return df
-    
-    current_month_idx = datetime.now().month - 1  # 0-indexed
-    available_months = [m for m in MONTHS_FR if m in df.columns]
+    return _calculate_metrics(df)
 
-    df['usage_last_30_days'] = df[MONTHS_FR[current_month_idx]] if current_month_idx < 12 else 0
-
-    month_cols_3mo = []
-    for i in range(1, 4):
-        month_idx = (current_month_idx - i) % 12
-        if MONTHS_FR[month_idx] in df.columns:
-            month_cols_3mo.append(MONTHS_FR[month_idx])
-    df['usage_last_3_months'] = df[month_cols_3mo].sum(axis=1) if month_cols_3mo else 0
-
-    df['usage_last_12_months'] = df[available_months].sum(axis=1) if available_months else 0
-    
-    # Historical average (first 6 months of data vs last 3 months)
-    # Get first 6 non-zero months for historical baseline
-    def get_historical_avg(row):
-        usage_values = [row[m] for m in available_months if pd.notna(row[m]) and row[m] > 0]
-        if len(usage_values) >= 6:
-            return np.mean(usage_values[:6])  # First 6 active months
-        elif len(usage_values) > 0:
-            return np.mean(usage_values)
-        return 0
-    
-    df['historical_monthly_avg'] = df.apply(get_historical_avg, axis=1)
-    df['recent_monthly_avg'] = df['usage_last_3_months'] / 3
-    
-    # Calculate drop percentage
-    df['usage_drop_percent'] = ((df['historical_monthly_avg'] - df['recent_monthly_avg']) / 
-                                 (df['historical_monthly_avg'] + 0.01) * 100)
-    
-    # MoM change
-    prev_month_idx = (current_month_idx - 1) % 12
-    if MONTHS_FR[prev_month_idx] in df.columns and MONTHS_FR[current_month_idx] in df.columns:
-        df['usage_prev_month'] = df[MONTHS_FR[prev_month_idx]]
-        df['mom_usage_percent'] = ((df['usage_last_30_days'] - df['usage_prev_month']) / 
-                                    (df['usage_prev_month'] + 0.01) * 100)
-    else:
-        df['usage_prev_month'] = 0
-        df['mom_usage_percent'] = 0
-    
-    # Average monthly usage (last 3 months)
-    df['trailing_3mo_monthly_avg_usage'] = df['usage_last_3_months'] / 3
-    
-    # Time saved (hours) - only calculate when configured, leave NaN otherwise
-    minutes_saved = df['Minutes Saved per usage']
-    hourly_rate = df['Client Hourly Rate']
-    df['time_saved_hours_30d'] = df['usage_last_30_days'] * minutes_saved / 60
-    df['time_saved_hours_3mo'] = df['usage_last_3_months'] * minutes_saved / 60
-    df['time_saved_hours_12mo'] = df['usage_last_12_months'] * minutes_saved / 60
-
-    # Cost saved ($) - only calculate when configured, leave NaN otherwise
-    df['cost_saved_30d'] = df['time_saved_hours_30d'] * hourly_rate
-    df['cost_saved_3mo'] = df['time_saved_hours_3mo'] * hourly_rate
-    df['cost_saved_12mo'] = df['time_saved_hours_12mo'] * hourly_rate
-    df['cumulative_cost_saved'] = df['cost_saved_12mo']
-    
-    # ROI tracking - handle None values
-    project_cost = df['Investment'].fillna(0)
-    df['project_cost'] = project_cost
-    df['roi_net'] = df['cumulative_cost_saved'] - df['project_cost']
-    df['roi_reached'] = (df['project_cost'] > 0) & (df['roi_net'] >= 0)
-    df['roi_progress_percent'] = ((df['cumulative_cost_saved'] / (df['project_cost'] + 0.01) * 100).clip(upper=200)).fillna(0)
-    
-    # ROI status badge with alerts - handle None values
-    monthly_target = df['Monthly ROI Goal'].fillna(0)
-    
-    def get_status(row):
-        # If no financial config, just report usage status
-        if row['project_cost'] == 0 or monthly_target[row.name] == 0:
-            if row['usage_last_30_days'] == 0 and row['usage_last_3_months'] == 0:
-                return 'Inactive'
-            elif row['usage_last_30_days'] == 0:
-                return 'No Recent Usage'
-            elif row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
-                return 'Usage Dropped'
-            else:
-                return 'Active (Config Needed)'
-        
-        # Check for major usage drop (>50% from historical)
-        if row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
-            return 'Usage Dropped'
-        elif row['usage_last_30_days'] == 0 and row['usage_last_3_months'] == 0:
-            return 'Inactive'
-        elif row['usage_last_30_days'] == 0:
-            return 'No Recent Usage'
-        elif row['roi_reached']:
-            return 'ROI Reached'
-        elif row['cost_saved_30d'] >= monthly_target[row.name]:
-            return 'Above Target'
-        elif row['cost_saved_30d'] >= monthly_target[row.name] * 0.7:
-            return 'On Track'
-        else:
-            return 'Below Target'
-    
-    df['roi_status'] = df.apply(get_status, axis=1)
-    
-    # Add status color for styling
-    def get_status_color(status):
-        if 'Dropped' in status or 'Inactive' in status:
-            return 'darkred'
-        elif 'No Recent' in status:
-            return 'orange'
-        elif 'ROI Reached' in status or 'Above Target' in status:
-            return 'green'
-        elif 'On Track' in status:
-            return 'orange'
-        elif 'Below Target' in status:
-            return 'red'
-        return 'gray'
-    
-    df['status_color'] = df['roi_status'].apply(get_status_color)
-    
-    # Enhanced break-even estimate
-    def estimate_breakeven(row):
-        if row['roi_reached']:
-            return "ROI Reached"
-        if pd.isna(row['cost_saved_3mo']) or row['cost_saved_3mo'] <= 0:
-            if row['usage_last_12_months'] > 0:
-                return "Was active, now inactive"
-            else:
-                return "Never used"
-        monthly_avg = row['cost_saved_3mo'] / 3
-        
-        # Check if usage is extremely low
-        if monthly_avg < 10 and row['historical_monthly_avg'] > monthly_avg * 10:
-            return f"~{((row['project_cost'] - row['cumulative_cost_saved']) / monthly_avg):.0f} months (project appears abandoned)"
-        elif monthly_avg < 50:
-            return f"{((row['project_cost'] - row['cumulative_cost_saved']) / monthly_avg):.0f} months (very low usage)"
-        
-        months_to_break_even = (row['project_cost'] - row['cumulative_cost_saved']) / monthly_avg
-        if months_to_break_even > 100:
-            return f"{months_to_break_even:.0f} months (needs attention)"
-        elif months_to_break_even > 24:
-            return f"{months_to_break_even:.1f} months"
-        else:
-            return f"{months_to_break_even:.1f} months"
-    
-    df['breakeven_estimate'] = df.apply(estimate_breakeven, axis=1)
-    
-    return df
 
 def main():
     st.title("Client Solutions ROI & Adoption Dashboard")
@@ -1112,7 +969,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
             }
             
             with st.spinner("Checking usage..."):
-                alerts_sent, alerts_skipped = check_and_send_alerts(df, smtp_config, alert_config)
+                alerts_sent, alerts_skipped = check_and_send_alerts(df_metrics, smtp_config, alert_config)
                 
                 if alerts_sent:
                     st.success(f"Sent {len(alerts_sent)} alert(s)")
