@@ -244,7 +244,9 @@ def main():
         if 'last_refresh' not in st.session_state:
             st.session_state.last_refresh = time.time()
         
-        last_refresh_time = datetime.fromtimestamp(st.session_state.last_refresh)
+        import pytz
+        montreal_tz = pytz.timezone('America/Montreal')
+        last_refresh_time = datetime.fromtimestamp(st.session_state.last_refresh, tz=pytz.utc).astimezone(montreal_tz)
         st.caption(f"Last updated: {last_refresh_time.strftime('%H:%M:%S')}")
     
     st.markdown("---")
