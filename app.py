@@ -83,13 +83,28 @@ st.markdown("""
 
     /* Multiselect tags */
     [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        background-color: #00c4ce !important;
-        color: #13100d !important;
+        background-color: #13100d !important;
+        color: #ffffff !important;
     }
 
     /* Multiselect focus/border */
     [data-testid="stMultiSelect"] [data-baseweb="select"] {
-        border-color: #00c4ce !important;
+        border-color: #13100d !important;
+    }
+
+    /* Radio buttons */
+    [data-testid="stRadio"] label[data-selected="true"] p {
+        color: #13100d !important;
+        font-weight: 600;
+    }
+    [data-testid="stRadio"] [data-baseweb="radio"] div {
+        background-color: #13100d !important;
+        border-color: #13100d !important;
+    }
+
+    /* Selectbox accent */
+    [data-testid="stSelectbox"] [data-baseweb="select"] {
+        border-color: #13100d !important;
     }
 
 </style>
