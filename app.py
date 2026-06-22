@@ -38,6 +38,16 @@ st.markdown("""
     [data-testid="stSidebar"] h3 {
         color: #13100d !important;
     }
+
+    /* Fix horizontal radio pill backgrounds in sidebar */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {
+        background-color: rgba(255,255,255,0.3) !important;
+        color: #13100d !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-selected="true"] {
+        background-color: rgba(255,255,255,0.85) !important;
+        color: #13100d !important;
+    }
     [data-testid="stSidebar"] .stButton > button {
         background-color: #ffffff;
         color: #13100d !important;
