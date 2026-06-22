@@ -137,7 +137,12 @@ def check_and_send_alerts(df, smtp_config, alert_config):
     """Check all projects and send alerts if needed"""
     alerts_sent = []
     alerts_skipped = []
-    
+
+    # Don't alert on weekends — yesterday's low usage is expected
+    yesterday = datetime.now() - timedelta(days=1)
+    if yesterday.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        return [], [{'project': 'ALL', 'reason': f'Skipped — yesterday was a {yesterday.strftime("%A")}'}]
+
     # Get recipients from config (comma-separated list)
     recipient_list = alert_config.get('to_emails', [])
     
