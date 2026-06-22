@@ -475,30 +475,62 @@ def main():
                 if col in display_table.columns:
                     display_table.loc[hide_mask, col] = 'Same as HEMY'
 
-        # Color-code the Overall Status column
-        def _style_status(val):
-            colors = {
-                'ROI Reached':   ('background-color: #d1fae5', 'color: #065f46'),
-                'Above Target':  ('background-color: #d1fae5', 'color: #065f46'),
-                'On Track':      ('background-color: #fef3c7', 'color: #92400e'),
-                'Below Target':  ('background-color: #fee2e2', 'color: #991b1b'),
-                'Usage Dropped': ('background-color: #fee2e2', 'color: #991b1b'),
-                'No Recent Usage': ('background-color: #ffedd5', 'color: #9a3412'),
-                'Inactive':      ('background-color: #ffedd5', 'color: #9a3412'),
-                'Active (Config Needed)': ('background-color: #f3f4f6', 'color: #6b7280'),
-                'Same as HEMY':  ('background-color: #f3f4f6', 'color: #6b7280'),
-            }
-            style = colors.get(val)
-            if style:
-                return '; '.join(style)
-            return ''
-
+        # Add colored dot prefix to Overall Status for visual indicator
+        status_dots = {
+            'ROI Reached':            '🟢 ROI Reached',
+            'Above Target':           '🟢 Above Target',
+            'On Track':               '🟡 On Track',
+            'Below Target':           '🔴 Below Target',
+            'Usage Dropped':          '🔴 Usage Dropped',
+            'No Recent Usage':        '🟠 No Recent Usage',
+            'Inactive':               '🟠 Inactive',
+            'Active (Config Needed)': '⚪ Active (Config Needed)',
+            'Same as HEMY':           'Same as HEMY',
+        }
         if 'Overall Status' in display_table.columns:
-            styled = display_table.style.map(_style_status, subset=['Overall Status'])
-        else:
-            styled = display_table.style
+            display_table['Overall Status'] = display_table['Overall Status'].map(
+                lambda v: status_dots.get(v, v)
+            )
 
-        st.dataframe(styled, use_container_width=True, height=400, hide_index=True)
+        # Apply cell overrides (user edits from previous sessions)
+        cell_overrides = load_cell_overrides()
+        for idx, row in display_table.iterrows():
+            row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+            if row_key in cell_overrides:
+                for col, val in cell_overrides[row_key].items():
+                    if col in display_table.columns and val is not None:
+                        display_table.at[idx, col] = val
+
+        st.caption("Click any cell to edit. Changes are saved automatically.")
+        edited_table = st.data_editor(
+            display_table,
+            use_container_width=True,
+            height=400,
+            hide_index=True,
+            key="portfolio_table_editor"
+        )
+
+        # Persist edits when user changes cells
+        if edited_table is not None:
+            has_changes = False
+            for idx in display_table.index:
+                row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+                if row_key not in cell_overrides:
+                    cell_overrides[row_key] = {}
+                for col in display_table.columns:
+                    orig = display_table.at[idx, col]
+                    new_val = edited_table.at[idx, col]
+                    orig_str = "" if pd.isna(orig) else str(orig)
+                    new_str = "" if pd.isna(new_val) else str(new_val)
+                    if orig_str != new_str:
+                        has_changes = True
+                        stored = None if pd.isna(new_val) else (new_val if isinstance(new_val, (str, int, float, bool)) else str(new_val))
+                        cell_overrides[row_key][col] = stored
+            if has_changes:
+                cell_overrides = {k: {c: v for c, v in vals.items() if v is not None} for k, vals in cell_overrides.items()}
+                cell_overrides = {k: v for k, v in cell_overrides.items() if v}
+                save_cell_overrides(cell_overrides)
+                st.rerun()
         
         # Add legends and explanations
         col1, col2 = st.columns(2)
