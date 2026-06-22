@@ -24,6 +24,59 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+    /* Sidebar background */
+    [data-testid="stSidebar"] {
+        background-color: #13100d;
+    }
+    [data-testid="stSidebar"] * {
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        background-color: #00c4ce;
+        color: #13100d !important;
+        border: none;
+        font-weight: 600;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #00adb5;
+    }
+
+    /* Main title */
+    h1 {
+        color: #13100d !important;
+        border-bottom: 3px solid #00c4ce;
+        padding-bottom: 0.3rem;
+    }
+
+    /* Tab styling */
+    [data-testid="stTab"] {
+        color: #13100d;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        border-bottom-color: #00c4ce !important;
+        color: #00c4ce !important;
+    }
+
+    /* Metric boxes */
+    [data-testid="stMetric"] {
+        background-color: #f0feff;
+        border-left: 4px solid #00c4ce;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+    }
+
+    /* Buttons */
+    .stButton > button[kind="primary"] {
+        background-color: #00c4ce;
+        color: #13100d;
+        border: none;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Constants
 MONTHS_FR = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 
              'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre']
