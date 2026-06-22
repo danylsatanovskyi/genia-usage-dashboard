@@ -67,9 +67,6 @@ st.markdown("""
     [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
         background-color: #00c4ce !important;
     }
-    [data-testid="stTabs"] [data-baseweb="tab-border"] {
-        background-color: #00c4ce !important;
-    }
 
     /* Metric boxes */
     [data-testid="stMetric"] {
