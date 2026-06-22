@@ -564,14 +564,14 @@ def main():
 
         # Add colored dot prefix to Overall Status for visual indicator
         status_dots = {
-            'ROI Reached':            '🟢 ROI Reached',
-            'Above Target':           '🟢 Above Target',
-            'On Track':               '🟡 On Track',
-            'Below Target':           '🔴 Below Target',
-            'Usage Dropped':          '🔴 Usage Dropped',
-            'No Recent Usage':        '🟠 No Recent Usage',
-            'Inactive':               '🟠 Inactive',
-            'Active (Config Needed)': '⚪ Active (Config Needed)',
+            'ROI Reached':            '🟩 ROI Reached',
+            'Above Target':           '🟩 Above Target',
+            'On Track':               '🟨 On Track',
+            'Below Target':           '🟥 Below Target',
+            'Usage Dropped':          '🟥 Usage Dropped',
+            'No Recent Usage':        '🟧 No Recent Usage',
+            'Inactive':               '🟧 Inactive',
+            'Active (Config Needed)': '⬜ Active (Config Needed)',
             'Same as ALL_HEMY':       'Same as ALL_HEMY',
         }
         if 'Overall Status' in display_table.columns:
