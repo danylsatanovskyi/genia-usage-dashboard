@@ -30,7 +30,12 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background-color: #00c4ce;
     }
-    [data-testid="stSidebar"] * {
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] div.stMarkdown,
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
         color: #13100d !important;
     }
     [data-testid="stSidebar"] .stButton > button {
@@ -92,20 +97,6 @@ st.markdown("""
         border-color: #13100d !important;
     }
 
-    /* Radio buttons */
-    [data-testid="stRadio"] label[data-selected="true"] p {
-        color: #13100d !important;
-        font-weight: 600;
-    }
-    [data-testid="stRadio"] [data-baseweb="radio"] div {
-        background-color: #13100d !important;
-        border-color: #13100d !important;
-    }
-
-    /* Selectbox accent */
-    [data-testid="stSelectbox"] [data-baseweb="select"] {
-        border-color: #13100d !important;
-    }
 
 </style>
 """, unsafe_allow_html=True)
