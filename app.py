@@ -30,22 +30,7 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background-color: #00c4ce;
     }
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] div.stMarkdown,
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 {
-        color: #13100d !important;
-    }
-
-    /* Fix horizontal radio pill backgrounds in sidebar */
-    [data-testid="stSidebar"] [data-testid="stRadio"] label {
-        background-color: rgba(255,255,255,0.3) !important;
-        color: #13100d !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-selected="true"] {
-        background-color: rgba(255,255,255,0.85) !important;
+    [data-testid="stSidebar"] * {
         color: #13100d !important;
     }
     [data-testid="stSidebar"] .stButton > button {
@@ -98,15 +83,14 @@ st.markdown("""
 
     /* Multiselect tags */
     [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        background-color: #13100d !important;
-        color: #ffffff !important;
+        background-color: #00c4ce !important;
+        color: #13100d !important;
     }
 
     /* Multiselect focus/border */
     [data-testid="stMultiSelect"] [data-baseweb="select"] {
-        border-color: #13100d !important;
+        border-color: #00c4ce !important;
     }
-
 
 </style>
 """, unsafe_allow_html=True)
