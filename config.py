@@ -74,6 +74,9 @@ COMPANY_CONFIGS = {
                 "supabase_table": "genia_analytics_hemaquebec_hemy",
                 "usage_field": "queries_sent",
                 "value_type": "boolean",
+                "split_by_field": "project",                              # Split rows by this column in the table
+                "split_values": ["hemy", "email_agent", "phone_agent"], # Only create rows for these values
+                "split_financial_row": "hemy",                          # Only this sub-row gets financial metadata
                 "investment": None,
                 "monthly_roi_goal": None,
                 "hourly_rate": None,
@@ -142,6 +145,12 @@ COMPANY_CONFIGS = {
                 "supabase_table": "genia_analytics_tourisme-montreal_financial_aid",
                 "usage_field": "file_processed",
                 "value_type": "boolean"
+            },
+            "TICKETING": {
+                "supabase_table": "genia_analytics_tourisme-montreal_ticketing",
+                "usage_field": "Type",
+                "value_type": "match",
+                "match_value": "platform_visit",
             },
         }
     },

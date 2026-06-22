@@ -66,8 +66,10 @@ def _fetch_all_rows(supabase, table_name):
     return all_rows
 
 
-def _count_usage(series, value_type):
+def _count_usage(series, value_type, match_value=None):
     """Count usage from a series regardless of dtype (bool, int, object/string)."""
+    if value_type == "match":
+        return (series == match_value).sum()
     if value_type != "boolean":
         return pd.to_numeric(series, errors='coerce').sum()
     # Handle bool, int (0/1), and object ("True"/"False" strings)
@@ -87,6 +89,7 @@ def load_data(supabase, company_configs):
                 table_name = project_config['supabase_table']
                 usage_field = project_config['usage_field']
                 value_type = project_config.get('value_type', 'boolean')
+                match_value = project_config.get('match_value')
 
                 rows = _fetch_all_rows(supabase, table_name)
 
@@ -113,7 +116,7 @@ def load_data(supabase, company_configs):
                 yesterday_records = records_df[records_df['_date'] == yesterday]
 
                 if usage_field in yesterday_records.columns:
-                    usage_yesterday = _count_usage(yesterday_records[usage_field], value_type)
+                    usage_yesterday = _count_usage(yesterday_records[usage_field], value_type, match_value)
                 else:
                     usage_yesterday = 0
 
@@ -127,28 +130,111 @@ def load_data(supabase, company_configs):
                     month_records = records_df[
                         (records_df['_month'] == month_num) & (records_df['_year'] == year)
                     ]
-                    usage_count = _count_usage(month_records[usage_field], value_type) if usage_field in month_records.columns else 0
+                    usage_count = _count_usage(month_records[usage_field], value_type, match_value) if usage_field in month_records.columns else 0
                     monthly_usage[month_name] = usage_count
                 
                 project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
                 metadata = excel_metadata.get(project_key, {})
                 usage_type_override = "Matched Companies" if (company_name == "TECHO BLOC" and project_name == "MATCHING") else None
-                
-                project_row = {
-                    'COMPANY': company_name,
-                    'CLIENT': company_config.get('client_name', company_name),
-                    'PROJECT': project_name,
-                    'Investment': metadata.get('Investment'),
-                    'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
-                    'Client Hourly Rate': metadata.get('Client Hourly Rate'),
-                    'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                    'Month Activated': metadata.get('Month Activated'),
-                    'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                    'Months Active': metadata.get('Months Active'),
-                    'usage_yesterday': usage_yesterday,
-                }
-                project_row.update(monthly_usage)
-                all_data.append(project_row)
+
+                split_by_field = project_config.get('split_by_field')
+                split_financial_row = project_config.get('split_financial_row', '').lower()
+
+                split_values = project_config.get('split_values')
+
+                if split_by_field and split_by_field in records_df.columns:
+                    all_sub_values = records_df[split_by_field].dropna().unique()
+                    sub_values = [v for v in all_sub_values if split_values is None or v in split_values]
+                    if split_values:
+                        sub_values = sorted(sub_values, key=lambda v: split_values.index(v) if v in split_values else 999)
+
+                    # Build per-sub-value monthly usage first so we can sum for the total row
+                    sub_rows_data = []
+                    total_monthly = {MONTHS_FR[i]: 0 for i in range(12)}
+                    total_yesterday = 0
+
+                    for sub_val in sub_values:
+                        sub_df = records_df[records_df[split_by_field] == sub_val]
+
+                        sub_yesterday = _count_usage(
+                            sub_df[sub_df['_date'] == yesterday][usage_field],
+                            value_type, match_value
+                        ) if usage_field in sub_df.columns else 0
+                        total_yesterday += sub_yesterday
+
+                        sub_monthly = {}
+                        for month_idx in range(12):
+                            month_num = month_idx + 1
+                            year = current_year if month_num <= current_month else current_year - 1
+                            month_name = MONTHS_FR[month_idx]
+                            month_sub = sub_df[
+                                (sub_df['_month'] == month_num) & (sub_df['_year'] == year)
+                            ]
+                            count = _count_usage(month_sub[usage_field], value_type, match_value) if usage_field in month_sub.columns else 0
+                            sub_monthly[month_name] = count
+                            total_monthly[month_name] += count
+
+                        sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
+
+                    # Total row — combined usage, carries all financial metadata, appears first
+                    total_row = {
+                        'COMPANY': company_name,
+                        'CLIENT': company_config.get('client_name', company_name),
+                        'PROJECT': project_name,
+                        'Investment': metadata.get('Investment'),
+                        'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
+                        'Client Hourly Rate': metadata.get('Client Hourly Rate'),
+                        'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
+                        'Month Activated': metadata.get('Month Activated'),
+                        'Usage Type': usage_type_override or metadata.get('Usage Type'),
+                        'Months Active': metadata.get('Months Active'),
+                        'usage_yesterday': total_yesterday,
+                        '_hide_roi': False,
+                        '_project_group': project_name,
+                        '_sort_order': -1,
+                    }
+                    total_row.update(total_monthly)
+                    all_data.append(total_row)
+
+                    # Individual sub-rows — own usage & savings, blank financial columns
+                    for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
+                        sub_row = {
+                            'COMPANY': company_name,
+                            'CLIENT': company_config.get('client_name', company_name),
+                            'PROJECT': str(sub_val),
+                            'Investment': None,
+                            'Monthly ROI Goal': None,
+                            'Client Hourly Rate': metadata.get('Client Hourly Rate'),
+                            'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
+                            'Month Activated': None,
+                            'Usage Type': usage_type_override or metadata.get('Usage Type'),
+                            'Months Active': None,
+                            'usage_yesterday': sub_yesterday,
+                            '_hide_roi': True,
+                            '_project_group': project_name,
+                            '_sort_order': order,
+                        }
+                        sub_row.update(sub_monthly)
+                        all_data.append(sub_row)
+                else:
+                    project_row = {
+                        'COMPANY': company_name,
+                        'CLIENT': company_config.get('client_name', company_name),
+                        'PROJECT': project_name,
+                        'Investment': metadata.get('Investment'),
+                        'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
+                        'Client Hourly Rate': metadata.get('Client Hourly Rate'),
+                        'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
+                        'Month Activated': metadata.get('Month Activated'),
+                        'Usage Type': usage_type_override or metadata.get('Usage Type'),
+                        'Months Active': metadata.get('Months Active'),
+                        '_hide_roi': False,
+                        '_project_group': project_name,
+                        '_sort_order': 0,
+                        'usage_yesterday': usage_yesterday,
+                    }
+                    project_row.update(monthly_usage)
+                    all_data.append(project_row)
                 
             except Exception as e:
                 print(f"Error: {company_name} - {project_name}: {e}")
@@ -192,8 +278,8 @@ def calculate_metrics(df):
     df['usage_drop_percent'] = ((df['historical_monthly_avg'] - df['recent_monthly_avg']) / 
                                  (df['historical_monthly_avg'] + 0.01) * 100)
     
-    minutes_saved = df['Minutes Saved per usage'].fillna(0)
-    hourly_rate = df['Client Hourly Rate'].fillna(0)
+    minutes_saved = df['Minutes Saved per usage']
+    hourly_rate = df['Client Hourly Rate']
     df['time_saved_hours_30d'] = df['usage_last_30_days'] * minutes_saved / 60
     df['time_saved_hours_3mo'] = df['usage_last_3_months'] * minutes_saved / 60
     df['time_saved_hours_12mo'] = df['usage_last_12_months'] * minutes_saved / 60

@@ -19,7 +19,7 @@ from modules.email_alerts import check_and_send_alerts, send_email_alert
 # Page config
 st.set_page_config(
     page_title="Client Solutions ROI Dashboard",
-    page_icon="📊",
+    page_icon=None,
     layout="wide"
 )
 
@@ -272,14 +272,14 @@ def calculate_metrics(df):
     # Average monthly usage (last 3 months)
     df['trailing_3mo_monthly_avg_usage'] = df['usage_last_3_months'] / 3
     
-    # Time saved (hours) - handle None values
-    minutes_saved = df['Minutes Saved per usage'].fillna(0)
+    # Time saved (hours) - only calculate when configured, leave NaN otherwise
+    minutes_saved = df['Minutes Saved per usage']
+    hourly_rate = df['Client Hourly Rate']
     df['time_saved_hours_30d'] = df['usage_last_30_days'] * minutes_saved / 60
     df['time_saved_hours_3mo'] = df['usage_last_3_months'] * minutes_saved / 60
     df['time_saved_hours_12mo'] = df['usage_last_12_months'] * minutes_saved / 60
-    
-    # Cost saved ($) - handle None values
-    hourly_rate = df['Client Hourly Rate'].fillna(0)
+
+    # Cost saved ($) - only calculate when configured, leave NaN otherwise
     df['cost_saved_30d'] = df['time_saved_hours_30d'] * hourly_rate
     df['cost_saved_3mo'] = df['time_saved_hours_3mo'] * hourly_rate
     df['cost_saved_12mo'] = df['time_saved_hours_12mo'] * hourly_rate
@@ -345,7 +345,7 @@ def calculate_metrics(df):
     def estimate_breakeven(row):
         if row['roi_reached']:
             return "ROI Reached"
-        if row['cost_saved_3mo'] <= 0:
+        if pd.isna(row['cost_saved_3mo']) or row['cost_saved_3mo'] <= 0:
             if row['usage_last_12_months'] > 0:
                 return "Was active, now inactive"
             else:
@@ -375,10 +375,11 @@ def main():
     
     # Manual refresh button in sidebar
     with st.sidebar:
+        st.image("https://genia.co/wp-content/uploads/2022/10/logo_genia.svg", width=160)
         st.markdown("---")
         
         # Manual refresh button
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("Refresh Data", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
         
@@ -387,7 +388,7 @@ def main():
             st.session_state.last_refresh = time.time()
         
         last_refresh_time = datetime.fromtimestamp(st.session_state.last_refresh)
-        st.caption(f"📅 Last updated: {last_refresh_time.strftime('%H:%M:%S')}")
+        st.caption(f"Last updated: {last_refresh_time.strftime('%H:%M:%S')}")
     
     st.markdown("---")
     
@@ -401,7 +402,7 @@ def main():
     
     # Calculate metrics
     df_metrics = calculate_metrics(df)
-    
+
     # Add custom columns
     custom_config = load_custom_columns_config()
     df_metrics = add_custom_data_columns(df_metrics, custom_config)
@@ -558,7 +559,10 @@ def main():
         
         # Sort dataframe - first by COMPANY, then by selected column
         ascending = sort_order == 'Ascending'
-        display_df = filtered_df.sort_values(by=['COMPANY', sort_by], ascending=[True, ascending])
+        display_df = filtered_df.sort_values(
+            by=['COMPANY', '_project_group', '_sort_order', sort_by],
+            ascending=[True, True, True, ascending]
+        )
         
         # Display table with better formatting
         # Get custom column config
@@ -634,22 +638,30 @@ def main():
         if 'Usage (Last 12 Months)' in display_table.columns:
             display_table['Usage (Last 12 Months)'] = display_table['Usage (Last 12 Months)'].round(0).astype(int)
         if 'Hours Saved (This Month)' in display_table.columns:
-            display_table['Hours Saved (This Month)'] = display_table['Hours Saved (This Month)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+            display_table['Hours Saved (This Month)'] = display_table['Hours Saved (This Month)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
         if 'Hours Saved (Last 3 Months)' in display_table.columns:
-            display_table['Hours Saved (Last 3 Months)'] = display_table['Hours Saved (Last 3 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+            display_table['Hours Saved (Last 3 Months)'] = display_table['Hours Saved (Last 3 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
         if 'Hours Saved (Last 12 Months)' in display_table.columns:
-            display_table['Hours Saved (Last 12 Months)'] = display_table['Hours Saved (Last 12 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "0.00h")
+            display_table['Hours Saved (Last 12 Months)'] = display_table['Hours Saved (Last 12 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
         if 'Monthly Target' in display_table.columns:
             display_table['Monthly Target'] = display_table['Monthly Target'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
         if 'Saved (This Month)' in display_table.columns:
-            display_table['Saved (This Month)'] = display_table['Saved (This Month)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+            display_table['Saved (This Month)'] = display_table['Saved (This Month)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         if 'Saved (Last 3 Months)' in display_table.columns:
-            display_table['Saved (Last 3 Months)'] = display_table['Saved (Last 3 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+            display_table['Saved (Last 3 Months)'] = display_table['Saved (Last 3 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         if 'Saved (Last 12 Months)' in display_table.columns:
-            display_table['Saved (Last 12 Months)'] = display_table['Saved (Last 12 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+            display_table['Saved (Last 12 Months)'] = display_table['Saved (Last 12 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         if 'Total Saved' in display_table.columns:
-            display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "$0")
+            display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         
+        # For split sub-rows (e.g. email_agent, phone_agent), show "Same as Hemy" for shared financial columns
+        if '_hide_roi' in display_df.columns:
+            hide_mask = display_df['_hide_roi'].reindex(display_table.index).fillna(False).astype(bool)
+            hide_cols = ['Investment', 'Activated', 'Monthly Target', 'ROI Reached?', 'Target Met?', 'Overall Status']
+            for col in hide_cols:
+                if col in display_table.columns:
+                    display_table.loc[hide_mask, col] = 'Same as Hemy'
+
         # Apply cell overrides (user edits from previous sessions)
         cell_overrides = load_cell_overrides()
         for idx, row in display_table.iterrows():
@@ -660,7 +672,7 @@ def main():
                         display_table.at[idx, col] = val
         
         # Editable table - click any cell to edit; changes are saved automatically
-        st.caption("💡 Click any cell to edit. Changes are saved automatically.")
+        st.caption("Click any cell to edit. Changes are saved automatically.")
         edited_table = st.data_editor(
             display_table,
             use_container_width=True,
@@ -745,7 +757,7 @@ def main():
             ].iloc[0]
             
             # Display configuration
-            st.markdown("### 📋 Project Configuration")
+            st.markdown("### Project Configuration")
             
             col1, col2, col3 = st.columns(3)
             
@@ -1139,7 +1151,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         st.markdown("---")
         
         # Section 4: Email Alerts  
-        st.markdown("### 📧 Email Alerts")
+        st.markdown("### Email Alerts")
         
         # Get recipients from .env
         recipients_str = os.getenv('ALERT_TO_EMAILS', '')
@@ -1147,7 +1159,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         
         dashboard_url = os.getenv('DASHBOARD_URL', 'http://localhost:8501')
         
-        if st.button("▶️ Test with Current Numbers", type="primary", use_container_width=True):
+        if st.button("Test with Current Numbers", type="primary", use_container_width=True):
             smtp_config = {
                 'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
                 'smtp_port': int(os.getenv('SMTP_PORT', 587)),
@@ -1165,7 +1177,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                 alerts_sent, alerts_skipped = check_and_send_alerts(df, smtp_config, alert_config)
                 
                 if alerts_sent:
-                    st.success(f"✅ Sent {len(alerts_sent)} alert(s)")
+                    st.success(f"Sent {len(alerts_sent)} alert(s)")
                     for alert in alerts_sent:
                         st.caption(f"• {alert['project']}: Yesterday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
                 else:
