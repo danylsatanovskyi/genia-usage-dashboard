@@ -389,7 +389,7 @@ def main():
         filtered_df = filtered_df[filtered_df['roi_status'] == selected_status]
     
     # Top metrics
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric(
@@ -428,17 +428,6 @@ def main():
             "ROI Reached", 
             f"{roi_reached_count} / {len(filtered_df)}",
             help="Solutions that have reached ROI"
-        )
-    
-    with col6:
-        # Count projects needing attention
-        needs_attention = len(filtered_df[
-            (filtered_df['roi_status'].str.contains('Dropped|Inactive|No Recent', na=False))
-        ])
-        st.metric(
-            "Needs Attention",
-            needs_attention,
-            help="Projects with usage drops or inactive"
         )
     
     st.markdown("---")
