@@ -450,24 +450,17 @@ def main():
         
         # Sort dataframe - first by COMPANY, then by selected column
         ascending = sort_order == 'Ascending'
-        df_copy = filtered_df.copy()
-        df_copy['_sort_val'] = pd.to_numeric(df_copy[sort_by], errors='coerce').fillna(-1)
-
-        # Sort parent rows by metric, then stitch sub-rows below their parent
-        parents = df_copy[~df_copy['_hide_roi']].sort_values('_sort_val', ascending=ascending)
-        sub_rows = df_copy[df_copy['_hide_roi']]
-
-        ordered = []
-        for _, parent in parents.iterrows():
-            ordered.append(parent)
-            children = sub_rows[
-                (sub_rows['COMPANY'] == parent['COMPANY']) &
-                (sub_rows['_project_group'] == parent['_project_group'])
-            ].sort_values('_sort_order')
-            for _, child in children.iterrows():
-                ordered.append(child)
-
-        display_df = pd.DataFrame(ordered).drop(columns=['_sort_val'])
+        display_df = filtered_df.copy()
+        display_df['_sort_val'] = pd.to_numeric(display_df[sort_by], errors='coerce').fillna(-1)
+        # Each group (parent + sub-rows) gets the parent's sort value so they move together
+        display_df['_group_sort_val'] = display_df.groupby(['COMPANY', '_project_group'])['_sort_val'].transform(
+            lambda x: display_df.loc[x.index[display_df.loc[x.index, '_sort_order'] == -1], '_sort_val'].values[0]
+            if (display_df.loc[x.index, '_sort_order'] == -1).any() else x.max()
+        )
+        display_df = display_df.sort_values(
+            by=['_group_sort_val', '_sort_order'],
+            ascending=[ascending, True]
+        ).drop(columns=['_sort_val', '_group_sort_val'])
         
         # Display table with better formatting
         # Get custom column config
