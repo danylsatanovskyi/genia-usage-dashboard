@@ -446,7 +446,7 @@ def main():
                 }[x]
             )
         with sort_col2:
-            sort_order = st.radio("Order", ['Descending', 'Ascending'], horizontal=True)
+            sort_order = st.radio("Order", ['Descending', 'Ascending'])
         
         # Sort dataframe - first by COMPANY, then by selected column
         ascending = sort_order == 'Ascending'
