@@ -300,7 +300,12 @@ def main():
     
     # Manual refresh button in sidebar
     with st.sidebar:
-        st.image("https://genia.co/wp-content/uploads/2022/10/logo_genia.svg", width=160)
+        st.markdown(
+            '<a href="https://genia.co/en/" target="_blank">'
+            '<img src="https://genia.co/wp-content/uploads/2022/10/logo_genia.svg" width="160"/>'
+            '</a>',
+            unsafe_allow_html=True
+        )
         st.markdown("---")
         
         # Manual refresh button
