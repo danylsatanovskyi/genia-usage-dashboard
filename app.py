@@ -489,52 +489,6 @@ def main():
     
     st.markdown("---")
     
-    # Dedicated section: Projects Requiring Attention
-    if needs_attention > 0:
-        st.markdown("## Projects Requiring Attention")
-        st.caption("Usage drops, inactive, or no recent usage — these projects may need follow-up.")
-        
-        alert_df = filtered_df[
-            filtered_df['roi_status'].str.contains('Dropped|Inactive|No Recent', na=False)
-        ].copy()
-        
-        # Compact summary table
-        summary_cols = ['CLIENT', 'PROJECT', 'roi_status', 'historical_monthly_avg', 'recent_monthly_avg', 'usage_drop_percent']
-        summary_df = alert_df[[c for c in summary_cols if c in alert_df.columns]].copy()
-        rename_map = {
-            'CLIENT': 'Client', 'PROJECT': 'Project', 'roi_status': 'Status',
-            'historical_monthly_avg': 'Was (avg/mo)', 'recent_monthly_avg': 'Now (avg/mo)',
-            'usage_drop_percent': 'Drop %'
-        }
-        summary_df = summary_df.rename(columns={k: v for k, v in rename_map.items() if k in summary_df.columns})
-        if 'Was (avg/mo)' in summary_df.columns:
-            summary_df['Was (avg/mo)'] = summary_df['Was (avg/mo)'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "—")
-        if 'Now (avg/mo)' in summary_df.columns:
-            summary_df['Now (avg/mo)'] = summary_df['Now (avg/mo)'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "—")
-        if 'Drop %' in summary_df.columns:
-            summary_df['Drop %'] = summary_df['Drop %'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "—")
-        
-        st.dataframe(summary_df, use_container_width=True, hide_index=True, height=min(120 + len(alert_df) * 38, 400))
-        
-        # Expandable details per project
-        with st.expander("View details for each project", expanded=False):
-            for _, row in alert_df.iterrows():
-                with st.container():
-                    st.markdown(f"**{row['CLIENT']} — {row['PROJECT']}**")
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.metric("Status", row['roi_status'])
-                    with c2:
-                        st.metric("Was averaging", f"{row['historical_monthly_avg']:.1f}/mo")
-                    with c3:
-                        st.metric("Now averaging", f"{row['recent_monthly_avg']:.1f}/mo", 
-                                 delta=f"-{row['usage_drop_percent']:.0f}%" if row['usage_drop_percent'] > 0 else f"{row['usage_drop_percent']:.0f}%")
-                    if row['usage_drop_percent'] > 50:
-                        st.error(f"Usage dropped {row['usage_drop_percent']:.0f}% from historical average")
-                    st.markdown("---")
-    
-    st.markdown("---")
-    
     # Tabs
     tab1, tab2, tab3 = st.tabs(["Portfolio Overview", "Solution Details", "Settings"])
     
@@ -662,47 +616,30 @@ def main():
                 if col in display_table.columns:
                     display_table.loc[hide_mask, col] = 'Same as HEMY'
 
-        # Apply cell overrides (user edits from previous sessions)
-        cell_overrides = load_cell_overrides()
-        for idx, row in display_table.iterrows():
-            row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
-            if row_key in cell_overrides:
-                for col, val in cell_overrides[row_key].items():
-                    if col in display_table.columns and val is not None:
-                        display_table.at[idx, col] = val
-        
-        # Editable table - click any cell to edit; changes are saved automatically
-        st.caption("Click any cell to edit. Changes are saved automatically.")
-        edited_table = st.data_editor(
-            display_table,
-            use_container_width=True,
-            height=400,
-            hide_index=True,
-            key="portfolio_table_editor"
-        )
-        
-        # Persist edits when user changes cells
-        if edited_table is not None:
-            has_changes = False
-            for idx in display_table.index:
-                row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
-                if row_key not in cell_overrides:
-                    cell_overrides[row_key] = {}
-                for col in display_table.columns:
-                    orig = display_table.at[idx, col]
-                    new_val = edited_table.at[idx, col]
-                    orig_str = "" if pd.isna(orig) else str(orig)
-                    new_str = "" if pd.isna(new_val) else str(new_val)
-                    if orig_str != new_str:
-                        has_changes = True
-                        # Store JSON-serializable value
-                        stored = None if pd.isna(new_val) else (new_val if isinstance(new_val, (str, int, float, bool)) else str(new_val))
-                        cell_overrides[row_key][col] = stored
-            if has_changes:
-                cell_overrides = {k: {c: v for c, v in vals.items() if v is not None} for k, vals in cell_overrides.items()}
-                cell_overrides = {k: v for k, v in cell_overrides.items() if v}
-                save_cell_overrides(cell_overrides)
-                st.rerun()
+        # Color-code the Overall Status column
+        def _style_status(val):
+            colors = {
+                'ROI Reached':   ('background-color: #d1fae5', 'color: #065f46'),
+                'Above Target':  ('background-color: #d1fae5', 'color: #065f46'),
+                'On Track':      ('background-color: #fef3c7', 'color: #92400e'),
+                'Below Target':  ('background-color: #fee2e2', 'color: #991b1b'),
+                'Usage Dropped': ('background-color: #fee2e2', 'color: #991b1b'),
+                'No Recent Usage': ('background-color: #ffedd5', 'color: #9a3412'),
+                'Inactive':      ('background-color: #ffedd5', 'color: #9a3412'),
+                'Active (Config Needed)': ('background-color: #f3f4f6', 'color: #6b7280'),
+                'Same as HEMY':  ('background-color: #f3f4f6', 'color: #6b7280'),
+            }
+            style = colors.get(val)
+            if style:
+                return '; '.join(style)
+            return ''
+
+        if 'Overall Status' in display_table.columns:
+            styled = display_table.style.applymap(_style_status, subset=['Overall Status'])
+        else:
+            styled = display_table.style
+
+        st.dataframe(styled, use_container_width=True, height=400, hide_index=True)
         
         # Add legends and explanations
         col1, col2 = st.columns(2)
