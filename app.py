@@ -92,6 +92,25 @@ st.markdown("""
         border-color: #00c4ce !important;
     }
 
+    /* Selectbox focus/active border - turquoise everywhere */
+    [data-baseweb="select"] > div:focus-within,
+    [data-baseweb="select"] > div[aria-expanded="true"] {
+        border-color: #00c4ce !important;
+        box-shadow: 0 0 0 1px #00c4ce !important;
+    }
+    [data-baseweb="input"] > div:focus-within {
+        border-color: #00c4ce !important;
+        box-shadow: 0 0 0 1px #00c4ce !important;
+    }
+
+    /* Remove any red underlines / accents */
+    * {
+        outline-color: #00c4ce !important;
+    }
+    a {
+        color: #00c4ce !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
