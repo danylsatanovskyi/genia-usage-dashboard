@@ -450,10 +450,12 @@ def main():
         
         # Sort dataframe - first by COMPANY, then by selected column
         ascending = sort_order == 'Ascending'
-        display_df = filtered_df.sort_values(
-            by=['COMPANY', '_project_group', '_sort_order', sort_by],
+        display_df = filtered_df.copy()
+        display_df['_sort_val'] = pd.to_numeric(display_df[sort_by], errors='coerce').fillna(-1)
+        display_df = display_df.sort_values(
+            by=['COMPANY', '_project_group', '_sort_order', '_sort_val'],
             ascending=[True, True, True, ascending]
-        )
+        ).drop(columns=['_sort_val'])
         
         # Display table with better formatting
         # Get custom column config
