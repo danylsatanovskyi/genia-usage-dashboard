@@ -28,19 +28,25 @@ st.markdown("""
 <style>
     /* Sidebar background */
     [data-testid="stSidebar"] {
-        background-color: #13100d;
+        background-color: #00c4ce;
     }
     [data-testid="stSidebar"] * {
-        color: #ffffff !important;
+        color: #13100d !important;
     }
     [data-testid="stSidebar"] .stButton > button {
-        background-color: #00c4ce;
+        background-color: #ffffff;
         color: #13100d !important;
         border: none;
         font-weight: 600;
     }
     [data-testid="stSidebar"] .stButton > button:hover {
-        background-color: #00adb5;
+        background-color: #e0f9fa;
+    }
+    /* Logo area — white background so logo is visible */
+    [data-testid="stSidebar"] [data-testid="stImage"] {
+        background-color: #ffffff;
+        border-radius: 8px;
+        padding: 8px;
     }
 
     /* Main title */
