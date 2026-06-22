@@ -180,7 +180,7 @@ def load_data(supabase, company_configs):
                     total_row = {
                         'COMPANY': company_name,
                         'CLIENT': company_config.get('client_name', company_name),
-                        'PROJECT': project_name,
+                        'PROJECT': f"ALL_{project_name}",
                         'Investment': metadata.get('Investment'),
                         'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
                         'Client Hourly Rate': metadata.get('Client Hourly Rate'),

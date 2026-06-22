@@ -473,7 +473,7 @@ def main():
             hide_cols = ['Investment', 'Activated', 'Monthly Target', 'ROI Reached?', 'Target Met?', 'Overall Status']
             for col in hide_cols:
                 if col in display_table.columns:
-                    display_table.loc[hide_mask, col] = 'Same as HEMY'
+                    display_table.loc[hide_mask, col] = 'Same as ALL_HEMY'
 
         # Add colored dot prefix to Overall Status for visual indicator
         status_dots = {
@@ -485,7 +485,7 @@ def main():
             'No Recent Usage':        '🟠 No Recent Usage',
             'Inactive':               '🟠 Inactive',
             'Active (Config Needed)': '⚪ Active (Config Needed)',
-            'Same as HEMY':           'Same as HEMY',
+            'Same as ALL_HEMY':       'Same as ALL_HEMY',
         }
         if 'Overall Status' in display_table.columns:
             display_table['Overall Status'] = display_table['Overall Status'].map(
