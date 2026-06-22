@@ -430,29 +430,7 @@ def main():
     with tab1:
         st.subheader("Portfolio Overview")
         
-        # Sort options
-        sort_col1, sort_col2 = st.columns([2, 1])
-        with sort_col1:
-            sort_by = st.selectbox(
-                "Sort by",
-                ['usage_yesterday', 'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cost_saved_30d', 'cumulative_cost_saved'],
-                format_func=lambda x: {
-                    'usage_yesterday': 'Usage (Last Weekday)',
-                    'usage_last_30_days': 'Usage (This Month)',
-                    'usage_last_3_months': 'Usage (Last 3 Months)',
-                    'usage_last_12_months': 'Usage (Last 12 Months)',
-                    'cost_saved_30d': 'Saved (This Month)',
-                    'cumulative_cost_saved': 'Total Saved',
-                }[x]
-            )
-        with sort_col2:
-            sort_order = st.radio("Order", ['Descending', 'Ascending'])
-        
-        # Sort dataframe - first by COMPANY, then by selected column
-        ascending = sort_order == 'Ascending'
         display_df = filtered_df.copy()
-        display_df['_sort_val'] = pd.to_numeric(display_df[sort_by], errors='coerce').fillna(-1)
-        display_df = display_df.sort_values('_sort_val', ascending=ascending).drop(columns=['_sort_val'])
         
         # Display table with better formatting
         # Get custom column config
