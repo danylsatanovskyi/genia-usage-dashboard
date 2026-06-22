@@ -895,15 +895,16 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
             
             # Monthly trend for this solution - with year for correct chronological order
             st.markdown("### Monthly Usage Trend")
-            start_year, start_month = 2025, 4  # April = start of "year" (Jan-Mar = next year)
+            _cy = datetime.now().year
+            _cm = datetime.now().month
             month_data = []
             for i, month_fr in enumerate(MONTHS_FR):
                 if month_fr not in solution_data.index:
                     continue
                 month_num = i + 1
-                year = start_year + 1 if month_num < start_month else start_year
+                year = _cy if month_num <= _cm else _cy - 1
                 month_data.append({
-                    'label': f"{MONTHS_EN[i][:3]} {year}",  # "Apr 2025", "Jan 2026"
+                    'label': f"{MONTHS_EN[i][:3]} {year}",
                     'value': solution_data[month_fr],
                     'sort_key': f"{year}-{month_num:02d}",
                 })
