@@ -156,7 +156,6 @@ def save_hidden_projects(hidden_set):
     with open(HIDDEN_PROJECTS_FILE, 'w') as f:
         json.dump({'hidden': list(hidden_set)}, f, indent=2)
 
-@st.cache_data
 def load_excel_metadata():
     """Load project metadata from Excel file"""
     try:
@@ -213,7 +212,6 @@ def load_excel_metadata():
         st.error(f"Error loading Excel metadata: {e}")
         return {}
 
-@st.cache_data
 def load_data():
     """Load data from Supabase - aggregate usage by month for each project"""
     supabase = get_supabase_client()
