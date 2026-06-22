@@ -450,25 +450,9 @@ def main():
         
         # Sort dataframe - first by COMPANY, then by selected column
         ascending = sort_order == 'Ascending'
-        df_copy = filtered_df.copy()
-        df_copy['_sort_val'] = pd.to_numeric(df_copy[sort_by], errors='coerce').fillna(-1)
-
-        parents = df_copy[df_copy['_sort_order'] == -1].sort_values('_sort_val', ascending=ascending)
-        non_split = df_copy[~df_copy['_hide_roi'] & (df_copy['_sort_order'] != -1)].sort_values('_sort_val', ascending=ascending)
-        sub_rows = df_copy[df_copy['_hide_roi']]
-
-        ordered_idx = []
-        for _, parent in parents.iterrows():
-            ordered_idx.append(parent.name)
-            children_idx = sub_rows[
-                (sub_rows['COMPANY'] == parent['COMPANY']) &
-                (sub_rows['_project_group'] == parent['_project_group'])
-            ].sort_values('_sort_order').index.tolist()
-            ordered_idx.extend(children_idx)
-        for _, row in non_split.iterrows():
-            ordered_idx.append(row.name)
-
-        display_df = df_copy.loc[ordered_idx].drop(columns=['_sort_val'])
+        display_df = filtered_df.copy()
+        display_df['_sort_val'] = pd.to_numeric(display_df[sort_by], errors='coerce').fillna(-1)
+        display_df = display_df.sort_values('_sort_val', ascending=ascending).drop(columns=['_sort_val'])
         
         # Display table with better formatting
         # Get custom column config
