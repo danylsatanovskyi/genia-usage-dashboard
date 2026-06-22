@@ -19,7 +19,7 @@ from modules.data_loader import calculate_metrics as _calculate_metrics
 
 # Page config
 st.set_page_config(
-    page_title="Client Solutions ROI Dashboard",
+    page_title="Genia Client Dashboard",
     page_icon=None,
     layout="wide"
 )
@@ -226,7 +226,7 @@ def calculate_metrics(df):
 
 
 def main():
-    st.title("Client Solutions ROI & Adoption Dashboard")
+    st.title("Genia Client Dashboard")
     
     # Manual refresh button in sidebar
     with st.sidebar:
