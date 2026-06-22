@@ -166,13 +166,13 @@ def check_and_send_alerts(df, smtp_config, alert_config):
         
         if yesterday_usage < daily_avg_3mo:
             # Prepare email
-            subject = f"⚠️ Usage Drop Alert: {row['CLIENT']} - {row['PROJECT']}"
+            subject = f"Usage Drop Alert: {row['CLIENT']} - {row['PROJECT']}"
             body = f"""
             <p><strong>Project:</strong> {row['CLIENT']} - {row['PROJECT']}</p>
-            <p><strong>Yesterday's Usage:</strong> {yesterday_usage:.0f}</p>
+            <p><strong>Last Weekday Usage:</strong> {yesterday_usage:.0f}</p>
             <p><strong>3-Month Daily Average:</strong> {daily_avg_3mo:.2f} ({usage_3mo:.0f} usages / 90 days)</p>
             <p><strong>Status:</strong> <span style="color: #d32f2f;">Below Average</span></p>
-            
+
             <h3>Details:</h3>
             <ul>
                 <li>Last 30 days usage: {row.get('usage_last_30_days', 0):.0f}</li>

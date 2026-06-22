@@ -487,7 +487,7 @@ def main():
             'Month Activated': 'Activated',
             'Investment': 'Investment',
             'Usage Type': 'What We Count',
-            'usage_yesterday': 'Yesterday',
+            'usage_yesterday': 'Last Weekday',
             'usage_last_30_days': 'Usage (This Month)',
             'usage_last_3_months': 'Usage (Last 3 Months)',
             'usage_last_12_months': 'Usage (Last 12 Months)',
@@ -510,8 +510,8 @@ def main():
             display_table['Activated'] = pd.to_datetime(display_table['Activated'], errors='coerce').dt.strftime('%Y-%m')
         if 'Investment' in display_table.columns:
             display_table['Investment'] = display_table['Investment'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
-        if 'Yesterday' in display_table.columns:
-            display_table['Yesterday'] = display_table['Yesterday'].fillna(0).round(0).astype(int)
+        if 'Last Weekday' in display_table.columns:
+            display_table['Last Weekday'] = display_table['Last Weekday'].fillna(0).round(0).astype(int)
         if 'Usage (This Month)' in display_table.columns:
             display_table['Usage (This Month)'] = display_table['Usage (This Month)'].round(0).astype(int)
         if 'Usage (Last 3 Months)' in display_table.columns:
@@ -610,7 +610,7 @@ def main():
             - **Project**: The solution/project name
             - **Activated**: When the project went live
             - **Investment**: Total project cost
-            - **Yesterday**: Usage count from yesterday (complete day)
+            - **Last Weekday**: Usage count from the last weekday
             - **Usage (This Month/Last 3 Months/Last 12 Months)**: Usage count for different time periods
             - **Hours Saved**: Total hours saved for each time period
             - **Monthly Target**: Dollar savings goal per month
@@ -1076,7 +1076,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                 if alerts_sent:
                     st.success(f"Sent {len(alerts_sent)} alert(s)")
                     for alert in alerts_sent:
-                        st.caption(f"• {alert['project']}: Yesterday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
+                        st.caption(f"• {alert['project']}: Last Weekday={alert['yesterday']:.0f}, Avg={alert['avg']:.1f}")
                 else:
                     st.info("No alerts needed")
         
