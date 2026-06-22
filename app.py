@@ -92,17 +92,6 @@ st.markdown("""
         border-color: #00c4ce !important;
     }
 
-    /* Table contour */
-    [data-testid="stDataFrame"] {
-        border: 2px solid #00c4ce !important;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    [data-testid="stDataFrameResizable"] {
-        border: 2px solid #00c4ce !important;
-        border-radius: 8px;
-        overflow: hidden;
-    }
 </style>
 """, unsafe_allow_html=True)
 
