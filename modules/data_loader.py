@@ -112,7 +112,10 @@ def load_data(supabase, company_configs):
                 records_df['_year'] = records_df[date_col].dt.year
                 records_df['_date'] = records_df[date_col].dt.date
 
+                # Use last weekday so Monday compares Friday, not Sunday
                 yesterday = date.today() - timedelta(days=1)
+                while yesterday.weekday() >= 5:
+                    yesterday -= timedelta(days=1)
                 yesterday_records = records_df[records_df['_date'] == yesterday]
 
                 if usage_field in yesterday_records.columns:
