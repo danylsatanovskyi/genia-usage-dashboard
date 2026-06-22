@@ -492,7 +492,7 @@ def main():
             return ''
 
         if 'Overall Status' in display_table.columns:
-            styled = display_table.style.applymap(_style_status, subset=['Overall Status'])
+            styled = display_table.style.map(_style_status, subset=['Overall Status'])
         else:
             styled = display_table.style
 
