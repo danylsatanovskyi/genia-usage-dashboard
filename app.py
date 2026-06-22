@@ -435,12 +435,14 @@ def main():
         with sort_col1:
             sort_by = st.selectbox(
                 "Sort by",
-                ['usage_last_30_days', 'cost_saved_30d', 'roi_progress_percent', 'mom_usage_percent'],
+                ['usage_yesterday', 'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cost_saved_30d', 'cumulative_cost_saved'],
                 format_func=lambda x: {
+                    'usage_yesterday': 'Usage (Last Weekday)',
                     'usage_last_30_days': 'Usage (This Month)',
+                    'usage_last_3_months': 'Usage (Last 3 Months)',
+                    'usage_last_12_months': 'Usage (Last 12 Months)',
                     'cost_saved_30d': 'Saved (This Month)',
-                    'roi_progress_percent': 'ROI Progress %',
-                    'mom_usage_percent': 'MoM Change %'
+                    'cumulative_cost_saved': 'Total Saved',
                 }[x]
             )
         with sort_col2:
