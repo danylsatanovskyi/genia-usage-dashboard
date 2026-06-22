@@ -80,6 +80,17 @@ st.markdown("""
         border: none;
         font-weight: 600;
     }
+
+    /* Multiselect tags */
+    [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+        background-color: #00c4ce !important;
+        color: #13100d !important;
+    }
+
+    /* Multiselect focus/border */
+    [data-testid="stMultiSelect"] [data-baseweb="select"] {
+        border-color: #00c4ce !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
