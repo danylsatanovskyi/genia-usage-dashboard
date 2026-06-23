@@ -156,7 +156,7 @@ CHART_LAYOUT = dict(
     ),
 )
 CHART_COLORS = [
-    '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed',
+    '#00c4ce', '#059669', '#d97706', '#dc2626', '#7c3aed',
     '#0891b2', '#ea580c', '#db2777', '#4f46e5', '#0d9488',
 ]
 CUSTOM_COLUMNS_FILE = 'custom_columns_config.json'
@@ -840,7 +840,7 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                 line=dict(color=CHART_COLORS[0], width=3),
                 marker=dict(size=10, line=dict(width=2, color='white')),
                 fill='tozeroy',
-                fillcolor='rgba(37, 99, 235, 0.12)',
+                fillcolor='rgba(0, 196, 206, 0.12)',
                 hovertemplate='%{x}<br><b>%{y:,.0f}</b> usages<extra></extra>',
             ))
             fig.update_layout(
