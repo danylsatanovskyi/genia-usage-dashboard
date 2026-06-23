@@ -564,14 +564,14 @@ def main():
 
         # Add colored dot prefix to Overall Status for visual indicator
         status_dots = {
-            'ROI Reached':            '🟩 ROI Reached',
-            'Above Target':           '🟩 Above Target',
-            'On Track':               '🟨 On Track',
-            'Below Target':           '🟥 Below Target',
-            'Usage Dropped':          '🟥 Usage Dropped',
-            'No Recent Usage':        '🟧 No Recent Usage',
-            'Inactive':               '🟧 Inactive',
-            'Active (Config Needed)': '⬜ Active (Config Needed)',
+            'ROI Reached':            '🟢 ROI Reached',
+            'Above Target':           '🟢 Above Target',
+            'On Track':               '🟡 On Track',
+            'Below Target':           '🔴 Below Target',
+            'Usage Dropped':          '🔴 Usage Dropped',
+            'No Recent Usage':        '🟠 No Recent Usage',
+            'Inactive':               '🟠 Inactive',
+            'Active (Config Needed)': '⚪ Active (Config Needed)',
             'Same as ALL_HEMY':       'Same as ALL_HEMY',
         }
         if 'Overall Status' in display_table.columns:
@@ -804,9 +804,13 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
             
             # ROI Progress bar
             st.markdown("### ROI Progress")
-            progress_value = min(solution_data['roi_progress_percent'] / 100, 1.0)
-            st.progress(progress_value)
-            st.caption(f"${solution_data['cumulative_cost_saved']:,.0f} / ${solution_data['project_cost']:,.0f}")
+            progress_pct = min(solution_data['roi_progress_percent'], 100.0)
+            st.markdown(f"""
+<div style="background:#e6f9fa;border-radius:8px;height:18px;overflow:hidden;margin-bottom:4px;">
+  <div style="width:{progress_pct:.1f}%;background:#00c4ce;height:100%;border-radius:8px;transition:width 0.4s ease;"></div>
+</div>
+<div style="font-size:0.82rem;color:#555;">${solution_data['cumulative_cost_saved']:,.0f} / ${solution_data['project_cost']:,.0f} &nbsp;·&nbsp; {solution_data['roi_progress_percent']:.1f}%</div>
+""", unsafe_allow_html=True)
             
             # Monthly trend for this solution - with year for correct chronological order
             st.markdown("### Monthly Usage Trend")
