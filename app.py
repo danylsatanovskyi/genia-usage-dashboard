@@ -392,44 +392,49 @@ def main():
         filtered_df = filtered_df[filtered_df['roi_status'] == selected_status]
     
     # Top metrics
+    # For investment: split projects repeat the shared investment on every sub-row for display,
+    # so count it only once using the _split_primary flag (first sub-row per group).
+    # Hours/savings are per-row and can be summed directly across all rows.
+    primary_df = filtered_df[filtered_df['_split_primary'].astype(bool)] if '_split_primary' in filtered_df.columns else filtered_df
+
     col1, col2, col3, col4, col5 = st.columns(5)
-    
+
     with col1:
         st.metric(
-            "Total Solutions", 
+            "Total Solutions",
             len(filtered_df),
             help="Number of solutions tracked"
         )
-    
+
     with col2:
         total_hours = filtered_df['time_saved_hours_12mo'].sum()
         st.metric(
-            "Hours Saved (12mo)", 
+            "Hours Saved (12mo)",
             f"{total_hours:,.0f}h",
             help="Total hours saved across all solutions"
         )
-    
+
     with col3:
         total_savings = filtered_df['cost_saved_12mo'].sum()
         st.metric(
-            "Total Savings (12mo)", 
+            "Total Savings (12mo)",
             f"${total_savings:,.0f}",
             help="Total cost savings across all solutions"
         )
-    
+
     with col4:
-        total_investment = filtered_df['project_cost'].sum()
+        total_investment = primary_df['project_cost'].sum()
         st.metric(
-            "Total Investment", 
+            "Total Investment",
             f"${total_investment:,.0f}",
             help="Total project costs"
         )
-    
+
     with col5:
-        roi_reached_count = filtered_df['roi_reached'].sum()
+        roi_reached_count = primary_df['roi_reached'].sum()
         st.metric(
-            "ROI Reached", 
-            f"{roi_reached_count} / {len(filtered_df)}",
+            "ROI Reached",
+            f"{roi_reached_count} / {len(primary_df)}",
             help="Solutions that have reached ROI"
         )
     

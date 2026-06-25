@@ -179,43 +179,27 @@ def load_data(supabase, company_configs):
 
                         sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
 
-                    # Total row — combined usage, carries all financial metadata, appears first
-                    total_row = {
-                        'COMPANY': company_name,
-                        'CLIENT': company_config.get('client_name', company_name),
-                        'PROJECT': f"ALL_{project_name}",
-                        'Investment': metadata.get('Investment'),
-                        'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
-                        'Client Hourly Rate': metadata.get('Client Hourly Rate'),
-                        'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                        'Month Activated': metadata.get('Month Activated'),
-                        'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                        'Months Active': metadata.get('Months Active'),
-                        'usage_yesterday': total_yesterday,
-                        '_hide_roi': False,
-                        '_project_group': project_name,
-                        '_sort_order': -1,
-                    }
-                    total_row.update(total_monthly)
-                    all_data.append(total_row)
-
-                    # Individual sub-rows — own usage & savings, blank financial columns
+                    # Sub-rows only — no aggregated total row.
+                    # Shared financial fields repeat on every sub-row for display.
+                    # _split_primary=True on the first sub-row so investment is counted
+                    # only once when summing totals in the dashboard.
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
                         sub_row = {
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
                             'PROJECT': str(sub_val),
-                            'Investment': None,
-                            'Monthly ROI Goal': None,
+                            'Investment': metadata.get('Investment'),
+                            'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
                             'Client Hourly Rate': metadata.get('Client Hourly Rate'),
                             'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                            'Month Activated': None,
+                            'Month Activated': metadata.get('Month Activated'),
                             'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                            'Months Active': None,
+                            'Months Active': metadata.get('Months Active'),
                             'usage_yesterday': sub_yesterday,
                             '_hide_roi': True,
                             '_project_group': project_name,
                             '_sort_order': order,
+                            '_split_primary': order == 0,
                         }
                         sub_row.update(sub_monthly)
                         all_data.append(sub_row)
@@ -234,6 +218,7 @@ def load_data(supabase, company_configs):
                         '_hide_roi': False,
                         '_project_group': project_name,
                         '_sort_order': 0,
+                        '_split_primary': True,
                         'usage_yesterday': usage_yesterday,
                     }
                     project_row.update(monthly_usage)
