@@ -183,9 +183,9 @@ def load_custom_columns_config():
         "calculated_columns": {},
         "visible_columns": [
             "CLIENT", "PROJECT", "Month Activated", "Investment",
-            "usage_last_30_days", "time_saved_hours_30d",
-            "Monthly ROI Goal", "cost_saved_30d", "roi_goal_achieved",
-            "cumulative_cost_saved", "roi_reached", "roi_status"
+            "usage_last_30_days", "mom_usage_percent", "usage_last_3_months", "usage_last_12_months",
+            "time_saved_hours_12mo",
+            "cumulative_cost_saved", "roi_progress_percent", "roi_status"
         ]
     }
 
@@ -451,13 +451,13 @@ def main():
         with sort_col1:
             sort_by = st.selectbox(
                 "Sort by",
-                ['usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cost_saved_30d', 'cumulative_cost_saved'],
+                ['usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cumulative_cost_saved', 'roi_progress_percent'],
                 format_func=lambda x: {
-                    'usage_last_30_days': 'Usage (This Month)',
-                    'usage_last_3_months': 'Usage (Last 3 Months)',
-                    'usage_last_12_months': 'Usage (Last 12 Months)',
-                    'cost_saved_30d': 'Saved (This Month)',
+                    'usage_last_30_days': '1 mo',
+                    'usage_last_3_months': '3 mo',
+                    'usage_last_12_months': '12 mo',
                     'cumulative_cost_saved': 'Total Saved',
+                    'roi_progress_percent': 'ROI %',
                 }[x]
             )
         with sort_col2:
@@ -473,93 +473,71 @@ def main():
         custom_config = load_custom_columns_config()
         DEFAULT_COLUMNS = [
             'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
-            'Usage Type',
             'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
-            'time_saved_hours_30d',
-            'Monthly ROI Goal', 'cost_saved_30d', 'roi_goal_achieved',
-            'cumulative_cost_saved', 'roi_reached',
+            'time_saved_hours_12mo',
+            'cumulative_cost_saved', 'roi_progress_percent',
             'roi_status'
         ]
         columns_to_display = custom_config.get('visible_columns', DEFAULT_COLUMNS)
         
-        # Add a column to check if monthly ROI goal was achieved
-        display_df['roi_goal_achieved'] = display_df.apply(
-            lambda row: 'Yes' if (pd.notna(row.get('Monthly ROI Goal')) and 
-                                  pd.notna(row['cost_saved_30d']) and 
-                                  row['cost_saved_30d'] >= row.get('Monthly ROI Goal', 0)) 
-            else 'N/A' if pd.isna(row.get('Monthly ROI Goal')) else 'No', axis=1
-        )
-        
-        # Add a column to show if overall ROI is reached
-        display_df['roi_reached_display'] = display_df['roi_reached'].apply(
-            lambda x: 'Yes' if x else 'No'
-        )
-        
         # Filter only existing columns
         columns_to_display = [col for col in columns_to_display if col in display_df.columns]
-        
+
         display_table = display_df[columns_to_display].copy()
-        
-        # Add the display column
-        if 'roi_reached' in display_table.columns:
-            display_table['roi_reached'] = display_df['roi_reached_display']
-        
+
         # Rename for display
         rename_dict = {
-            'CLIENT': 'Client', 
+            'CLIENT': 'Client',
             'PROJECT': 'Project',
             'Month Activated': 'Activated',
             'Investment': 'Investment',
-            'Usage Type': 'What We Count',
-            'usage_last_30_days': 'Usage (This Month)',
+            'usage_last_30_days': '1 mo',
             'mom_usage_percent': 'MoM %',
-            'usage_last_3_months': 'Usage (Last 3 Months)',
-            'usage_last_12_months': 'Usage (Last 12 Months)',
-            'time_saved_hours_30d': 'Hours Saved (This Month)',
-            'time_saved_hours_3mo': 'Hours Saved (Last 3 Months)',
-            'time_saved_hours_12mo': 'Hours Saved (Last 12 Months)',
-            'Monthly ROI Goal': 'Monthly Target',
-            'cost_saved_30d': 'Saved (This Month)',
-            'cost_saved_3mo': 'Saved (Last 3 Months)',
-            'cost_saved_12mo': 'Saved (Last 12 Months)',
-            'roi_goal_achieved': 'Target Met?',
+            'usage_last_3_months': '3 mo',
+            'usage_last_12_months': '12 mo',
+            'time_saved_hours_30d': 'Hours Saved (1 mo)',
+            'time_saved_hours_3mo': 'Hours Saved (3 mo)',
+            'time_saved_hours_12mo': 'Hours Saved',
+            'cost_saved_30d': 'Saved (1 mo)',
+            'cost_saved_3mo': 'Saved (3 mo)',
+            'cost_saved_12mo': 'Saved (12 mo)',
             'cumulative_cost_saved': 'Total Saved',
-            'roi_reached': 'ROI Reached?',
-            'roi_status': 'Overall Status'
+            'roi_progress_percent': 'ROI %',
+            'roi_status': 'Overall Status',
         }
         display_table = display_table.rename(columns=rename_dict)
-        
+
         # Format numbers
         if 'Activated' in display_table.columns:
             display_table['Activated'] = pd.to_datetime(display_table['Activated'], errors='coerce').dt.strftime('%Y-%m')
         if 'Investment' in display_table.columns:
             display_table['Investment'] = display_table['Investment'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
-        if 'Usage (This Month)' in display_table.columns:
-            display_table['Usage (This Month)'] = display_table['Usage (This Month)'].round(0).astype(int)
+        if '1 mo' in display_table.columns:
+            display_table['1 mo'] = display_table['1 mo'].round(0).astype(int)
         if 'MoM %' in display_table.columns:
             display_table['MoM %'] = display_table['MoM %'].apply(
                 lambda x: (f"+{x:.0f}%" if x >= 0 else f"{x:.0f}%") if pd.notna(x) else ""
             )
-        if 'Usage (Last 3 Months)' in display_table.columns:
-            display_table['Usage (Last 3 Months)'] = display_table['Usage (Last 3 Months)'].round(0).astype(int)
-        if 'Usage (Last 12 Months)' in display_table.columns:
-            display_table['Usage (Last 12 Months)'] = display_table['Usage (Last 12 Months)'].round(0).astype(int)
-        if 'Hours Saved (This Month)' in display_table.columns:
-            display_table['Hours Saved (This Month)'] = display_table['Hours Saved (This Month)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
-        if 'Hours Saved (Last 3 Months)' in display_table.columns:
-            display_table['Hours Saved (Last 3 Months)'] = display_table['Hours Saved (Last 3 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
-        if 'Hours Saved (Last 12 Months)' in display_table.columns:
-            display_table['Hours Saved (Last 12 Months)'] = display_table['Hours Saved (Last 12 Months)'].apply(lambda x: f"{x:.2f}h" if pd.notna(x) else "")
-        if 'Monthly Target' in display_table.columns:
-            display_table['Monthly Target'] = display_table['Monthly Target'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
-        if 'Saved (This Month)' in display_table.columns:
-            display_table['Saved (This Month)'] = display_table['Saved (This Month)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
-        if 'Saved (Last 3 Months)' in display_table.columns:
-            display_table['Saved (Last 3 Months)'] = display_table['Saved (Last 3 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
-        if 'Saved (Last 12 Months)' in display_table.columns:
-            display_table['Saved (Last 12 Months)'] = display_table['Saved (Last 12 Months)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+        if '3 mo' in display_table.columns:
+            display_table['3 mo'] = display_table['3 mo'].round(0).astype(int)
+        if '12 mo' in display_table.columns:
+            display_table['12 mo'] = display_table['12 mo'].round(0).astype(int)
+        if 'Hours Saved' in display_table.columns:
+            display_table['Hours Saved'] = display_table['Hours Saved'].apply(lambda x: f"{x:.1f}h" if pd.notna(x) else "")
+        if 'Hours Saved (1 mo)' in display_table.columns:
+            display_table['Hours Saved (1 mo)'] = display_table['Hours Saved (1 mo)'].apply(lambda x: f"{x:.1f}h" if pd.notna(x) else "")
+        if 'Hours Saved (3 mo)' in display_table.columns:
+            display_table['Hours Saved (3 mo)'] = display_table['Hours Saved (3 mo)'].apply(lambda x: f"{x:.1f}h" if pd.notna(x) else "")
+        if 'Saved (1 mo)' in display_table.columns:
+            display_table['Saved (1 mo)'] = display_table['Saved (1 mo)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+        if 'Saved (3 mo)' in display_table.columns:
+            display_table['Saved (3 mo)'] = display_table['Saved (3 mo)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+        if 'Saved (12 mo)' in display_table.columns:
+            display_table['Saved (12 mo)'] = display_table['Saved (12 mo)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         if 'Total Saved' in display_table.columns:
             display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+        if 'ROI %' in display_table.columns:
+            display_table['ROI %'] = display_table['ROI %'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "")
         
         # Add colored dot prefix to Overall Status for visual indicator
         status_dots = {
@@ -847,33 +825,35 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
         st.caption("Choose which columns to display in the Portfolio Overview table")
 
         ALL_STANDARD_COLUMNS = [
-            'CLIENT', 'PROJECT', 'Month Activated', 'Investment', 'Usage Type',
+            'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
             'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
-            'time_saved_hours_30d', 'time_saved_hours_3mo', 'time_saved_hours_12mo',
-            'Monthly ROI Goal', 'cost_saved_30d', 'cost_saved_3mo', 'cost_saved_12mo',
-            'roi_goal_achieved', 'cumulative_cost_saved', 'roi_reached', 'roi_status'
+            'time_saved_hours_12mo',
+            'cumulative_cost_saved', 'roi_progress_percent', 'roi_status',
+            # Optional extras
+            'time_saved_hours_30d', 'time_saved_hours_3mo',
+            'cost_saved_30d', 'cost_saved_3mo', 'cost_saved_12mo',
+            'Monthly ROI Goal', 'roi_reached',
         ]
         COLUMN_DISPLAY_NAMES = {
             'CLIENT': 'Client',
             'PROJECT': 'Project',
             'Month Activated': 'Activated',
             'Investment': 'Investment',
-            'Usage Type': 'What We Count',
-            'usage_last_30_days': 'Usage (This Month)',
+            'usage_last_30_days': '1 mo',
             'mom_usage_percent': 'MoM %',
-            'usage_last_3_months': 'Usage (Last 3 Months)',
-            'usage_last_12_months': 'Usage (Last 12 Months)',
-            'time_saved_hours_30d': 'Hours Saved (This Month)',
-            'time_saved_hours_3mo': 'Hours Saved (Last 3 Months)',
-            'time_saved_hours_12mo': 'Hours Saved (Last 12 Months)',
-            'Monthly ROI Goal': 'Monthly Target',
-            'cost_saved_30d': 'Saved (This Month)',
-            'cost_saved_3mo': 'Saved (Last 3 Months)',
-            'cost_saved_12mo': 'Saved (Last 12 Months)',
-            'roi_goal_achieved': 'Target Met?',
+            'usage_last_3_months': '3 mo',
+            'usage_last_12_months': '12 mo',
+            'time_saved_hours_12mo': 'Hours Saved',
             'cumulative_cost_saved': 'Total Saved',
-            'roi_reached': 'ROI Reached?',
+            'roi_progress_percent': 'ROI %',
             'roi_status': 'Overall Status',
+            'time_saved_hours_30d': 'Hours Saved (1 mo)',
+            'time_saved_hours_3mo': 'Hours Saved (3 mo)',
+            'cost_saved_30d': 'Saved (1 mo)',
+            'cost_saved_3mo': 'Saved (3 mo)',
+            'cost_saved_12mo': 'Saved (12 mo)',
+            'Monthly ROI Goal': 'Monthly Target',
+            'roi_reached': 'ROI Reached?',
         }
         col_visibility_default = custom_config.get('visible_columns', DEFAULT_COLUMNS)
         selected_vis_columns = st.multiselect(

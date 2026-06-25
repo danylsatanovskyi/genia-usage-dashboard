@@ -6,17 +6,13 @@
     "PROJECT",
     "Month Activated",
     "Investment",
-    "Usage Type",
-    "usage_yesterday",
     "usage_last_30_days",
+    "mom_usage_percent",
     "usage_last_3_months",
     "usage_last_12_months",
-    "time_saved_hours_30d",
-    "Monthly ROI Goal",
-    "cost_saved_30d",
-    "roi_goal_achieved",
+    "time_saved_hours_12mo",
     "cumulative_cost_saved",
-    "roi_reached",
+    "roi_progress_percent",
     "roi_status"
   ]
 }
