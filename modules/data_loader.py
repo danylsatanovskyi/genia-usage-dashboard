@@ -244,7 +244,7 @@ def calculate_metrics(df):
     df['usage_last_30_days'] = df[MONTHS_FR[current_month_idx]] if MONTHS_FR[current_month_idx] in df.columns else 0
 
     month_cols_3mo = []
-    for i in range(1, 4):
+    for i in range(0, 3):
         month_idx = (current_month_idx - i) % 12
         if MONTHS_FR[month_idx] in df.columns:
             month_cols_3mo.append(MONTHS_FR[month_idx])

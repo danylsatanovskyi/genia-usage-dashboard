@@ -380,7 +380,7 @@ def main():
     selected_project = st.sidebar.selectbox("Filter by Project", projects)
     
     status_options = ['All'] + sorted(visible_df['roi_status'].unique().tolist())
-    selected_status = st.sidebar.selectbox("Filter by ROI Status", status_options)
+    selected_status = st.sidebar.selectbox("Filter by Status / ROI", status_options)
     
     # Apply filters (from visible projects)
     filtered_df = visible_df.copy()
@@ -451,9 +451,8 @@ def main():
         with sort_col1:
             sort_by = st.selectbox(
                 "Sort by",
-                ['usage_yesterday', 'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cost_saved_30d', 'cumulative_cost_saved'],
+                ['usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months', 'cost_saved_30d', 'cumulative_cost_saved'],
                 format_func=lambda x: {
-                    'usage_yesterday': 'Usage (Last Weekday)',
                     'usage_last_30_days': 'Usage (This Month)',
                     'usage_last_3_months': 'Usage (Last 3 Months)',
                     'usage_last_12_months': 'Usage (Last 12 Months)',
@@ -472,15 +471,16 @@ def main():
         # Display table with better formatting
         # Get custom column config
         custom_config = load_custom_columns_config()
-        columns_to_display = custom_config.get('visible_columns', [
+        DEFAULT_COLUMNS = [
             'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
             'Usage Type',
-            'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months',
+            'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
             'time_saved_hours_30d',
             'Monthly ROI Goal', 'cost_saved_30d', 'roi_goal_achieved',
             'cumulative_cost_saved', 'roi_reached',
             'roi_status'
-        ])
+        ]
+        columns_to_display = custom_config.get('visible_columns', DEFAULT_COLUMNS)
         
         # Add a column to check if monthly ROI goal was achieved
         display_df['roi_goal_achieved'] = display_df.apply(
@@ -511,8 +511,8 @@ def main():
             'Month Activated': 'Activated',
             'Investment': 'Investment',
             'Usage Type': 'What We Count',
-            'usage_yesterday': 'Last Weekday',
             'usage_last_30_days': 'Usage (This Month)',
+            'mom_usage_percent': 'MoM %',
             'usage_last_3_months': 'Usage (Last 3 Months)',
             'usage_last_12_months': 'Usage (Last 12 Months)',
             'time_saved_hours_30d': 'Hours Saved (This Month)',
@@ -534,10 +534,12 @@ def main():
             display_table['Activated'] = pd.to_datetime(display_table['Activated'], errors='coerce').dt.strftime('%Y-%m')
         if 'Investment' in display_table.columns:
             display_table['Investment'] = display_table['Investment'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) and x > 0 else "Not set")
-        if 'Last Weekday' in display_table.columns:
-            display_table['Last Weekday'] = display_table['Last Weekday'].fillna(0).round(0).astype(int)
         if 'Usage (This Month)' in display_table.columns:
             display_table['Usage (This Month)'] = display_table['Usage (This Month)'].round(0).astype(int)
+        if 'MoM %' in display_table.columns:
+            display_table['MoM %'] = display_table['MoM %'].apply(
+                lambda x: (f"+{x:.0f}%" if x >= 0 else f"{x:.0f}%") if pd.notna(x) else ""
+            )
         if 'Usage (Last 3 Months)' in display_table.columns:
             display_table['Usage (Last 3 Months)'] = display_table['Usage (Last 3 Months)'].round(0).astype(int)
         if 'Usage (Last 12 Months)' in display_table.columns:
@@ -575,10 +577,16 @@ def main():
                 lambda v: status_dots.get(v, v)
             )
 
+        # Build row_keys mapping (position → row_key) before resetting index
+        row_keys = [f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}" for idx in display_table.index]
+
+        # Reset index so data_editor returns a 0-based DataFrame that matches row_keys positions
+        display_table = display_table.reset_index(drop=True)
+
         # Apply cell overrides (user edits from previous sessions)
         cell_overrides = load_cell_overrides()
-        for idx, row in display_table.iterrows():
-            row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+        for pos, idx in enumerate(display_table.index):
+            row_key = row_keys[pos]
             if row_key in cell_overrides:
                 for col, val in cell_overrides[row_key].items():
                     if col in display_table.columns and val is not None:
@@ -596,8 +604,8 @@ def main():
         # Persist edits when user changes cells
         if edited_table is not None:
             has_changes = False
-            for idx in display_table.index:
-                row_key = f"{display_df.loc[idx, 'COMPANY']}_{display_df.loc[idx, 'PROJECT']}"
+            for pos, idx in enumerate(display_table.index):
+                row_key = row_keys[pos]
                 if row_key not in cell_overrides:
                     cell_overrides[row_key] = {}
                 for col in display_table.columns:
@@ -615,40 +623,6 @@ def main():
                 save_cell_overrides(cell_overrides)
                 st.rerun()
         
-        # Add legends and explanations
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("""
-            **Column Explanations:**
-            - **Client**: The company/client name
-            - **Project**: The solution/project name
-            - **Activated**: When the project went live
-            - **Investment**: Total project cost
-            - **Last Weekday**: Usage count from the last weekday
-            - **Usage (This Month/Last 3 Months/Last 12 Months)**: Usage count for different time periods
-            - **Hours Saved**: Total hours saved for each time period
-            - **Monthly Target**: Dollar savings goal per month
-            - **Saved (This Month/Last 3 Months/Last 12 Months)**: Actual dollar value saved
-            - **Target Met?**: Did we achieve the monthly ROI goal? (Yes / No)
-            - **Total Saved**: Cumulative savings since project launch
-            - **ROI Reached?**: Has total saved exceeded investment? (Yes / No)
-            - **Overall Status**: Project health indicator with alerts
-            """)
-        
-        with col2:
-            st.markdown("""
-            **Status Legend:**
-            - **ROI Reached / Above Target**: ROI reached or above monthly target
-            - **On Track**: 70-100% of monthly target
-            - **Below Target**: Less than 70% of target
-            - **No Recent Usage**: No usage this month (but was active)
-            - **Usage Dropped**: Usage dropped >50% from historical average
-            - **Inactive**: No usage this month or last 3 months
-            
-            **Formula:**
-            Savings = Usage × (Minutes/Use ÷ 60) × Hourly Rate
-            """)
     
     with tab2:
         st.subheader("Solution Details")
@@ -693,7 +667,8 @@ def main():
                     st.caption(f"Each usage saves {mins:.0f} minutes of manual work")
                 else:
                     st.info("Time savings not configured")
-            
+                st.caption("To update: edit data.xlsx and refresh")
+
             with col3:
                 st.markdown("#### Financial Details")
                 investment = solution_data.get('project_cost')
@@ -701,13 +676,14 @@ def main():
                     st.metric("Total Investment", f"${investment:,.0f}")
                 else:
                     st.info("Investment not configured")
-                
+
                 hourly_rate = solution_data.get('Client Hourly Rate')
                 if hourly_rate and hourly_rate > 0:
                     st.metric("Client Hourly Rate", f"${hourly_rate:.0f}/hr")
                 else:
                     st.info("Hourly rate not configured")
-                
+                st.caption("To update: edit data.xlsx and refresh")
+
                 monthly_goal = solution_data.get('Monthly ROI Goal')
                 if monthly_goal and monthly_goal > 0:
                     st.metric("Monthly Target Savings", f"${monthly_goal:,.0f}")
@@ -860,13 +836,109 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
     
     with tab3:
         st.subheader("Custom Columns & Settings")
-        
+
         # Load config
         custom_config = load_custom_columns_config()
-        
+
         st.markdown("---")
-        
-        # Section 0: Hidden Projects
+
+        # Section: Column Visibility
+        st.markdown("### Column Visibility")
+        st.caption("Choose which columns to display in the Portfolio Overview table")
+
+        ALL_STANDARD_COLUMNS = [
+            'CLIENT', 'PROJECT', 'Month Activated', 'Investment', 'Usage Type',
+            'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
+            'time_saved_hours_30d', 'time_saved_hours_3mo', 'time_saved_hours_12mo',
+            'Monthly ROI Goal', 'cost_saved_30d', 'cost_saved_3mo', 'cost_saved_12mo',
+            'roi_goal_achieved', 'cumulative_cost_saved', 'roi_reached', 'roi_status'
+        ]
+        COLUMN_DISPLAY_NAMES = {
+            'CLIENT': 'Client',
+            'PROJECT': 'Project',
+            'Month Activated': 'Activated',
+            'Investment': 'Investment',
+            'Usage Type': 'What We Count',
+            'usage_last_30_days': 'Usage (This Month)',
+            'mom_usage_percent': 'MoM %',
+            'usage_last_3_months': 'Usage (Last 3 Months)',
+            'usage_last_12_months': 'Usage (Last 12 Months)',
+            'time_saved_hours_30d': 'Hours Saved (This Month)',
+            'time_saved_hours_3mo': 'Hours Saved (Last 3 Months)',
+            'time_saved_hours_12mo': 'Hours Saved (Last 12 Months)',
+            'Monthly ROI Goal': 'Monthly Target',
+            'cost_saved_30d': 'Saved (This Month)',
+            'cost_saved_3mo': 'Saved (Last 3 Months)',
+            'cost_saved_12mo': 'Saved (Last 12 Months)',
+            'roi_goal_achieved': 'Target Met?',
+            'cumulative_cost_saved': 'Total Saved',
+            'roi_reached': 'ROI Reached?',
+            'roi_status': 'Overall Status',
+        }
+        col_visibility_default = custom_config.get('visible_columns', DEFAULT_COLUMNS)
+        selected_vis_columns = st.multiselect(
+            "Visible Columns",
+            options=ALL_STANDARD_COLUMNS,
+            default=[c for c in col_visibility_default if c in ALL_STANDARD_COLUMNS],
+            format_func=lambda x: COLUMN_DISPLAY_NAMES.get(x, x),
+            key="visible_cols_settings"
+        )
+        if st.button("Save Column Visibility"):
+            custom_config['visible_columns'] = selected_vis_columns
+            save_custom_columns_config(custom_config)
+            st.success("Column visibility saved!")
+            st.rerun()
+
+        st.markdown("---")
+
+        # Section: Column Explanations & Status Legend
+        st.markdown("### Column Explanations & Status Legend")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("""
+            **Column Explanations:**
+            - **Client**: The company/client name
+            - **Project**: The solution/project name
+            - **Activated**: When the project went live
+            - **Investment**: Total project cost
+            - **Usage (This Month/Last 3 Months/Last 12 Months)**: Usage count for different time periods
+            - **MoM %**: Month-over-month usage change vs previous month
+            - **Hours Saved**: Total hours saved for each time period
+            - **Monthly Target**: Dollar savings goal per month
+            - **Saved (This Month/Last 3 Months/Last 12 Months)**: Actual dollar value saved
+            - **Target Met?**: Did we achieve the monthly ROI goal? (Yes / No)
+            - **Total Saved**: Cumulative savings since project launch
+            - **ROI Reached?**: Has total saved exceeded investment? (Yes / No)
+            - **Overall Status**: Project health indicator with alerts
+            """)
+        with col2:
+            st.markdown("""
+            **Status Legend:**
+            - **ROI Reached / Above Target**: ROI reached or above monthly target
+            - **On Track**: 70-100% of monthly target
+            - **Below Target**: Less than 70% of target
+            - **No Recent Usage**: No usage this month (but was active)
+            - **Usage Dropped**: Usage dropped >50% from historical average
+            - **Inactive**: No usage this month or last 3 months
+
+            **Formula:**
+            Savings = Usage × (Minutes/Use ÷ 60) × Hourly Rate
+            """)
+
+        st.markdown("---")
+
+        # Section: Project Configuration
+        st.markdown("### Project Configuration")
+        st.info(
+            "**Time Saved per Usage** and **Hourly Rate** are configured in the **data.xlsx** file "
+            "(one sheet per client). Open the file, find the project row, and fill in the "
+            "`Minutes Saved per usage` and `Client Hourly Rate` columns. "
+            "Then click **Refresh Data** to update the dashboard."
+        )
+
+        st.markdown("---")
+
+        # Section: Hidden Projects
         st.markdown("### Hidden Projects")
         st.caption("Hide projects from the entire dashboard. They won't appear in the table, metrics, or filters.")
         
@@ -1034,39 +1106,8 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
                         st.rerun()
         
         st.markdown("---")
-        
-        # Section 3: Column Visibility
-        st.markdown("### Column Visibility")
-        st.caption("Choose which columns to display in the Portfolio Overview table")
-        
-        # Get all available columns
-        all_possible_columns = [
-            'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
-            'Usage Type', 'Months Active',
-            'usage_yesterday', 'usage_last_30_days', 'usage_last_3_months', 'usage_last_12_months',
-            'time_saved_hours_30d', 'time_saved_hours_3mo', 'time_saved_hours_12mo',
-            'Monthly ROI Goal', 'cost_saved_30d', 'cost_saved_3mo', 'cost_saved_12mo',
-            'roi_goal_achieved', 'cumulative_cost_saved', 'roi_reached', 'roi_status',
-            'Minutes Saved per usage', 'Client Hourly Rate',
-            'mom_usage_percent', 'roi_progress_percent', 'breakeven_estimate'
-        ] + list(custom_config.get('data_columns', {}).keys()) + list(custom_config.get('calculated_columns', {}).keys())
-        
-        selected_columns = st.multiselect(
-            "Visible Columns",
-            options=all_possible_columns,
-            default=custom_config.get('visible_columns', all_possible_columns[:12]),
-            key="visible_cols"
-        )
-        
-        if st.button("Save Column Visibility"):
-            custom_config['visible_columns'] = selected_columns
-            save_custom_columns_config(custom_config)
-            st.success("Column visibility saved!")
-            st.rerun()
-        
-        st.markdown("---")
-        
-        # Section 4: Email Alerts  
+
+        # Section: Email Alerts  
         st.markdown("### Email Alerts")
         
         # Get recipients from .env
