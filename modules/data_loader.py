@@ -5,49 +5,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, date, timedelta
 
-MONTHS_FR = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 
+MONTHS_FR = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin',
              'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre']
-
-
-def load_excel_metadata():
-    """Load project metadata from Excel (no streamlit)"""
-    try:
-        excel_file = 'data.xlsx'
-        metadata_dict = {}
-        company_sheets = ['HEMA-QUEBEC', 'CELLCOM', 'SERIE CONSEIL', 'TECHO BLOC', 'DIGITAD', 'RETROMTL', 'CHEMTECH']
-        
-        for sheet_name in company_sheets:
-            try:
-                df = pd.read_excel(excel_file, sheet_name=sheet_name, header=2)
-                df.columns = df.columns.str.strip()
-                df['CLIENT'] = df['CLIENT'].ffill()
-                df = df[df['PROJECT'].notna() & (df['PROJECT'] != '')]
-                exclude_projects = ['TYPE D\'ECONOMIE', 'PROJET', 'TOTAL', 'SCREENSHOT FOR EMAIL']
-                df = df[~df['PROJECT'].isin(exclude_projects)]
-                df = df[~df['PROJECT'].str.contains('🔍|⚙️|💰', na=False)]
-                
-                for _, row in df.iterrows():
-                    project_key = f"{sheet_name}_{row['PROJECT']}"
-                    investment = pd.to_numeric(str(row.get('Investment', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    monthly_roi = pd.to_numeric(str(row.get('Monthly ROI Goal', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    hourly_rate = pd.to_numeric(str(row.get('Client Hourly Rate', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    minutes_saved = pd.to_numeric(row.get('Minutes Saved per usage', ''), errors='coerce')
-                    
-                    metadata_dict[project_key] = {
-                        'Investment': investment if pd.notna(investment) else None,
-                        'Monthly ROI Goal': monthly_roi if pd.notna(monthly_roi) else None,
-                        'Client Hourly Rate': hourly_rate if pd.notna(hourly_rate) else None,
-                        'Minutes Saved per usage': minutes_saved if pd.notna(minutes_saved) else None,
-                        'Month Activated': row.get('Month Activated'),
-                        'Usage Type': row.get('Usage Type'),
-                        'Months Active': row.get('Months Active')
-                    }
-            except Exception:
-                continue
-        
-        return metadata_dict
-    except Exception:
-        return {}
 
 
 def _fetch_all_rows(supabase, table_name):
@@ -78,9 +37,10 @@ def _count_usage(series, value_type, match_value=None):
     return (series == True).sum()
 
 
-def load_data(supabase, company_configs):
+def load_data(supabase, company_configs, project_metadata=None):
     """Load data from Supabase - same logic as app"""
-    excel_metadata = load_excel_metadata()
+    if project_metadata is None:
+        project_metadata = {}
     all_data = []
 
     for company_name, company_config in company_configs.items():
@@ -135,9 +95,9 @@ def load_data(supabase, company_configs):
                     ]
                     usage_count = _count_usage(month_records[usage_field], value_type, match_value) if usage_field in month_records.columns else 0
                     monthly_usage[month_name] = usage_count
-                
+
                 project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
-                metadata = excel_metadata.get(project_key, {})
+                metadata_entry = project_metadata.get(project_key, {})
                 usage_type_override = "Matched Companies" if (company_name == "TECHO BLOC" and project_name == "MATCHING") else None
 
                 split_by_field = project_config.get('split_by_field')
@@ -188,13 +148,13 @@ def load_data(supabase, company_configs):
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
                             'PROJECT': str(sub_val),
-                            'Investment': metadata.get('Investment'),
-                            'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
-                            'Client Hourly Rate': metadata.get('Client Hourly Rate'),
-                            'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                            'Month Activated': metadata.get('Month Activated'),
-                            'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                            'Months Active': metadata.get('Months Active'),
+                            'Investment': metadata_entry.get('investment'),
+                            'Monthly ROI Goal': metadata_entry.get('monthly_roi_goal'),
+                            'Client Hourly Rate': metadata_entry.get('client_hourly_rate'),
+                            'Minutes Saved per usage': metadata_entry.get('minutes_saved_per_usage'),
+                            'Month Activated': metadata_entry.get('month_activated'),
+                            'Usage Type': usage_type_override,
+                            'Months Active': None,
                             'usage_yesterday': sub_yesterday,
                             '_hide_roi': True,
                             '_project_group': project_name,
@@ -208,13 +168,13 @@ def load_data(supabase, company_configs):
                         'COMPANY': company_name,
                         'CLIENT': company_config.get('client_name', company_name),
                         'PROJECT': project_name,
-                        'Investment': metadata.get('Investment'),
-                        'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
-                        'Client Hourly Rate': metadata.get('Client Hourly Rate'),
-                        'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                        'Month Activated': metadata.get('Month Activated'),
-                        'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                        'Months Active': metadata.get('Months Active'),
+                        'Investment': metadata_entry.get('investment'),
+                        'Monthly ROI Goal': metadata_entry.get('monthly_roi_goal'),
+                        'Client Hourly Rate': metadata_entry.get('client_hourly_rate'),
+                        'Minutes Saved per usage': metadata_entry.get('minutes_saved_per_usage'),
+                        'Month Activated': metadata_entry.get('month_activated'),
+                        'Usage Type': usage_type_override,
+                        'Months Active': None,
                         '_hide_roi': False,
                         '_project_group': project_name,
                         '_sort_order': 0,

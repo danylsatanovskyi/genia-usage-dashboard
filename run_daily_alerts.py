@@ -44,7 +44,13 @@ def run_daily_alerts():
     
     # Load data (same logic as dashboard)
     print("📊 Loading project data...")
-    df = load_data(supabase, COMPANY_CONFIGS)
+    import json as _json
+    _metadata_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'project_metadata.json')
+    project_metadata = {}
+    if os.path.exists(_metadata_file):
+        with open(_metadata_file, 'r') as _f:
+            project_metadata = _json.load(_f)
+    df = load_data(supabase, COMPANY_CONFIGS, project_metadata)
     df = calculate_metrics(df)
     
     if df.empty:

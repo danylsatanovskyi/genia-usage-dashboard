@@ -162,6 +162,7 @@ CHART_COLORS = [
 CUSTOM_COLUMNS_FILE = 'custom_columns_config.json'
 CELL_OVERRIDES_FILE = 'cell_overrides.json'
 HIDDEN_PROJECTS_FILE = 'hidden_projects.json'
+PROJECT_METADATA_FILE = 'project_metadata.json'
 
 # Initialize Supabase client
 @st.cache_resource
@@ -249,70 +250,34 @@ def save_hidden_projects(hidden_set):
     with open(HIDDEN_PROJECTS_FILE, 'w') as f:
         json.dump({'hidden': list(hidden_set)}, f, indent=2)
 
-def load_excel_metadata():
-    """Load project metadata from Excel file"""
-    try:
-        excel_file = 'data.xlsx'
-        metadata_dict = {}
-        
-        # Read each sheet
-        company_sheets = ['HEMA-QUEBEC', 'CELLCOM', 'SERIE CONSEIL', 'TECHO BLOC', 'DIGITAD', 'RETROMTL', 'CHEMTECH']
-        
-        for sheet_name in company_sheets:
-            try:
-                # Read the sheet with header at row 2 (0-indexed)
-                df = pd.read_excel(excel_file, sheet_name=sheet_name, header=2)
-                
-                # Clean up column names
-                df.columns = df.columns.str.strip()
-                
-                # Forward-fill CLIENT column
-                df['CLIENT'] = df['CLIENT'].ffill()
-                
-                # Filter valid projects
-                df = df[df['PROJECT'].notna() & (df['PROJECT'] != '')]
-                
-                # Remove header rows and invalid projects
-                exclude_projects = ['TYPE D\'ECONOMIE', 'PROJET', 'TOTAL', 'SCREENSHOT FOR EMAIL']
-                df = df[~df['PROJECT'].isin(exclude_projects)]
-                df = df[~df['PROJECT'].str.contains('🔍|⚙️|💰', na=False)]
-                
-                # Extract metadata for each project
-                for _, row in df.iterrows():
-                    project_key = f"{sheet_name}_{row['PROJECT']}"
-                    
-                    # Clean currency columns
-                    investment = pd.to_numeric(str(row.get('Investment', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    monthly_roi = pd.to_numeric(str(row.get('Monthly ROI Goal', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    hourly_rate = pd.to_numeric(str(row.get('Client Hourly Rate', '')).replace('$', '').replace(',', ''), errors='coerce')
-                    minutes_saved = pd.to_numeric(row.get('Minutes Saved per usage', ''), errors='coerce')
-                    
-                    metadata_dict[project_key] = {
-                        'Investment': investment if pd.notna(investment) else None,
-                        'Monthly ROI Goal': monthly_roi if pd.notna(monthly_roi) else None,
-                        'Client Hourly Rate': hourly_rate if pd.notna(hourly_rate) else None,
-                        'Minutes Saved per usage': minutes_saved if pd.notna(minutes_saved) else None,
-                        'Month Activated': row.get('Month Activated'),
-                        'Usage Type': row.get('Usage Type'),
-                        'Months Active': row.get('Months Active')
-                    }
-            except Exception as e:
-                st.warning(f"Could not read metadata from sheet {sheet_name}: {e}")
-                continue
-        
-        return metadata_dict
-    except Exception as e:
-        st.error(f"Error loading Excel metadata: {e}")
-        return {}
+def load_project_metadata():
+    """Load project metadata from JSON file"""
+    if os.path.exists(PROJECT_METADATA_FILE):
+        with open(PROJECT_METADATA_FILE, 'r') as f:
+            return json.load(f)
+    return {}
 
-def load_data():
-    """Load data from Supabase - aggregate usage by month for each project"""
+def save_project_metadata(metadata):
+    """Save project metadata to JSON file"""
+    with open(PROJECT_METADATA_FILE, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+@st.cache_data(ttl=300)
+def _load_data_cached(metadata_json_str):
+    """Cached inner loader — re-runs when metadata changes (keyed by its JSON string)."""
     supabase = get_supabase_client()
     if not supabase:
         return pd.DataFrame()
-    
+    import json as _json
+    project_metadata = _json.loads(metadata_json_str)
     from modules.data_loader import load_data as _load_data
-    return _load_data(supabase, COMPANY_CONFIGS)
+    return _load_data(supabase, COMPANY_CONFIGS, project_metadata)
+
+def load_data():
+    """Load data from Supabase - aggregate usage by month for each project"""
+    project_metadata = load_project_metadata()
+    metadata_json_str = json.dumps(project_metadata, sort_keys=True)
+    return _load_data_cached(metadata_json_str)
 
 def calculate_metrics(df):
     return _calculate_metrics(df)
@@ -650,7 +615,7 @@ def main():
                     st.caption(f"Each usage saves {mins:.0f} minutes of manual work")
                 else:
                     st.info("Time savings not configured")
-                st.caption("To update: edit data.xlsx and refresh")
+                st.caption("To update: use the Settings tab → Project Configuration")
 
             with col3:
                 st.markdown("#### Financial Details")
@@ -665,7 +630,7 @@ def main():
                     st.metric("Client Hourly Rate", f"${hourly_rate:.0f}/hr")
                 else:
                     st.info("Hourly rate not configured")
-                st.caption("To update: edit data.xlsx and refresh")
+                st.caption("To update: use the Settings tab → Project Configuration")
 
                 monthly_goal = solution_data.get('Monthly ROI Goal')
                 if monthly_goal and monthly_goal > 0:
@@ -914,12 +879,75 @@ ROI Net: ${solution_data['roi_net']:,.2f} ({solution_data['roi_progress_percent'
 
         # Section: Project Configuration
         st.markdown("### Project Configuration")
-        st.info(
-            "**Time Saved per Usage** and **Hourly Rate** are configured in the **data.xlsx** file "
-            "(one sheet per client). Open the file, find the project row, and fill in the "
-            "`Minutes Saved per usage` and `Client Hourly Rate` columns. "
-            "Then click **Refresh Data** to update the dashboard."
-        )
+        st.caption("Edit metadata for each project. Click **Save All** to persist changes and refresh calculations.")
+
+        project_metadata = load_project_metadata()
+
+        if st.button("Save All Project Configuration", type="primary", key="save_all_project_metadata"):
+            updated_metadata = {}
+            for _company_name, _company_config in COMPANY_CONFIGS.items():
+                for _project_name in _company_config['projects']:
+                    _proj_key = f"{_company_config['worksheet_name']}_{_project_name}"
+                    _inv = st.session_state.get(f"meta_{_proj_key}_investment", 0)
+                    _mins = st.session_state.get(f"meta_{_proj_key}_minutes_saved", 0.0)
+                    _rate = st.session_state.get(f"meta_{_proj_key}_hourly_rate", 0.0)
+                    _roi = st.session_state.get(f"meta_{_proj_key}_monthly_roi_goal", 0)
+                    _month = st.session_state.get(f"meta_{_proj_key}_month_activated", "")
+                    updated_metadata[_proj_key] = {
+                        "investment": float(_inv) if _inv else None,
+                        "minutes_saved_per_usage": float(_mins) if _mins else None,
+                        "client_hourly_rate": float(_rate) if _rate else None,
+                        "monthly_roi_goal": float(_roi) if _roi else None,
+                        "month_activated": _month if _month else None,
+                    }
+            save_project_metadata(updated_metadata)
+            st.cache_data.clear()
+            st.success("Project configuration saved! Recalculating metrics...")
+            st.rerun()
+
+        for _company_name, _company_config in COMPANY_CONFIGS.items():
+            with st.expander(_company_config['client_name']):
+                for _project_name in _company_config['projects']:
+                    _proj_key = f"{_company_config['worksheet_name']}_{_project_name}"
+                    _current = project_metadata.get(_proj_key, {})
+                    st.markdown(f"**{_project_name}**")
+                    _c1, _c2 = st.columns(2)
+                    with _c1:
+                        st.text_input(
+                            "Month Activated (YYYY-MM)",
+                            value=_current.get("month_activated") or "",
+                            key=f"meta_{_proj_key}_month_activated",
+                        )
+                        st.number_input(
+                            "Investment ($)",
+                            min_value=0,
+                            step=1000,
+                            value=int(_current.get("investment") or 0),
+                            key=f"meta_{_proj_key}_investment",
+                        )
+                        st.number_input(
+                            "Monthly ROI Goal ($)",
+                            min_value=0,
+                            step=500,
+                            value=int(_current.get("monthly_roi_goal") or 0),
+                            key=f"meta_{_proj_key}_monthly_roi_goal",
+                        )
+                    with _c2:
+                        st.number_input(
+                            "Minutes Saved per Usage",
+                            min_value=0.0,
+                            step=1.0,
+                            value=float(_current.get("minutes_saved_per_usage") or 0.0),
+                            key=f"meta_{_proj_key}_minutes_saved",
+                        )
+                        st.number_input(
+                            "Client Hourly Rate ($/hr)",
+                            min_value=0.0,
+                            step=5.0,
+                            value=float(_current.get("client_hourly_rate") or 0.0),
+                            key=f"meta_{_proj_key}_hourly_rate",
+                        )
+                    st.markdown("---")
 
         st.markdown("---")
 

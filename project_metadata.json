@@ -1,0 +1,79 @@
+{
+  "CELLCOM_HR CHATBOT": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "CELLCOM_TABLEAU DE MARGE/CELLSELL": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "CELLCOM_ACCOUNTS PAYABLE": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "TECHO BLOC_MATCHING": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "HEMA-QUEBEC_HEMY": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "HEMA-QUEBEC_CALENDRIER RESEAUX SOCIAUX": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "DIGITAD_FELLOW INTEGRATION": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "DIGITAD_CLICKUP INTEGRATION": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "CHEMTECH_WILLY": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "RETROMTL_FINANCIAL AID": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  },
+  "RETROMTL_TICKETING": {
+    "investment": null,
+    "minutes_saved_per_usage": null,
+    "client_hourly_rate": null,
+    "monthly_roi_goal": null,
+    "month_activated": null
+  }
+}
