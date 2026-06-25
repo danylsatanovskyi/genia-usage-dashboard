@@ -476,7 +476,6 @@ def main():
             'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
             'time_saved_hours_12mo',
             'cumulative_cost_saved', 'roi_progress_percent',
-            'roi_status'
         ]
         columns_to_display = custom_config.get('visible_columns', DEFAULT_COLUMNS)
         
