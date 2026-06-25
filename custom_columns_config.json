@@ -5,12 +5,12 @@
     "CLIENT",
     "PROJECT",
     "Month Activated",
-    "Investment",
     "usage_last_30_days",
     "mom_usage_percent",
     "usage_last_3_months",
     "usage_last_12_months",
     "time_saved_hours_12mo",
+    "Investment",
     "cumulative_cost_saved",
     "roi_progress_percent"
   ]

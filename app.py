@@ -472,10 +472,10 @@ def main():
         # Get custom column config
         custom_config = load_custom_columns_config()
         DEFAULT_COLUMNS = [
-            'CLIENT', 'PROJECT', 'Month Activated', 'Investment',
+            'CLIENT', 'PROJECT', 'Month Activated',
             'usage_last_30_days', 'mom_usage_percent', 'usage_last_3_months', 'usage_last_12_months',
             'time_saved_hours_12mo',
-            'cumulative_cost_saved', 'roi_progress_percent',
+            'Investment', 'cumulative_cost_saved', 'roi_progress_percent',
         ]
         columns_to_display = custom_config.get('visible_columns', DEFAULT_COLUMNS)
         
