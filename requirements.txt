@@ -9,3 +9,4 @@ pytz
 dash>=2.14
 dash-bootstrap-components
 dash-ag-grid
+gunicorn
