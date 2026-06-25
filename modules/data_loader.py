@@ -180,26 +180,26 @@ def load_data(supabase, company_configs):
                         sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
 
                     # Sub-rows only — no aggregated total row.
-                    # Shared financial fields repeat on every sub-row for display.
-                    # _split_primary=True on the first sub-row so investment is counted
-                    # only once when summing totals in the dashboard.
+                    # Project-level fields (Investment, Monthly ROI Goal, Month Activated)
+                    # are intentionally blank — they don't apply to individual sub-rows.
+                    # Hours/savings are computed from per-sub-row usage + shared rate/minutes.
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
                         sub_row = {
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
                             'PROJECT': str(sub_val),
-                            'Investment': metadata.get('Investment'),
-                            'Monthly ROI Goal': metadata.get('Monthly ROI Goal'),
+                            'Investment': None,
+                            'Monthly ROI Goal': None,
                             'Client Hourly Rate': metadata.get('Client Hourly Rate'),
                             'Minutes Saved per usage': metadata.get('Minutes Saved per usage'),
-                            'Month Activated': metadata.get('Month Activated'),
+                            'Month Activated': None,
                             'Usage Type': usage_type_override or metadata.get('Usage Type'),
-                            'Months Active': metadata.get('Months Active'),
+                            'Months Active': None,
                             'usage_yesterday': sub_yesterday,
                             '_hide_roi': True,
                             '_project_group': project_name,
                             '_sort_order': order,
-                            '_split_primary': order == 0,
+                            '_split_primary': False,
                         }
                         sub_row.update(sub_monthly)
                         all_data.append(sub_row)
