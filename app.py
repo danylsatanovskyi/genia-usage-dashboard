@@ -514,9 +514,15 @@ def main():
         if '1 mo' in display_table.columns:
             display_table['1 mo'] = display_table['1 mo'].round(0).astype(int)
         if 'MoM %' in display_table.columns:
-            display_table['MoM %'] = display_table['MoM %'].apply(
-                lambda x: (f"+{x:.0f}%" if x >= 0 else f"{x:.0f}%") if pd.notna(x) else ""
-            )
+            prev = display_df['usage_prev_month'].reindex(display_table.index)
+            curr = display_df['usage_last_30_days'].reindex(display_table.index)
+            def _fmt_mom(row):
+                p, c, pct = prev[row.name], curr[row.name], row['MoM %']
+                if pd.isna(pct): return ""
+                if p == 0 and c == 0: return "–"
+                if p == 0: return "New"
+                return f"+{pct:.0f}%" if pct >= 0 else f"{pct:.0f}%"
+            display_table['MoM %'] = display_table.apply(_fmt_mom, axis=1)
         if '3 mo' in display_table.columns:
             display_table['3 mo'] = display_table['3 mo'].round(0).astype(int)
         if '12 mo' in display_table.columns:
