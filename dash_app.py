@@ -98,11 +98,22 @@ def fmt_hours(val):
     return f"{val:.1f}h"
 
 
-def fmt_mom(curr, prev):
+def fmt_mom(curr, prev, month_activated=None):
     if curr == 0 and prev == 0:
         return "–"
     if prev == 0 and curr > 0:
-        return "New"
+        # Only label "New" if the project was activated within the last 2 months
+        if month_activated:
+            try:
+                from datetime import datetime as dt, date
+                activated = dt.strptime(month_activated, "%Y-%m").date().replace(day=1)
+                today = date.today()
+                months_since = (today.year - activated.year) * 12 + (today.month - activated.month)
+                if months_since <= 2:
+                    return "New"
+            except ValueError:
+                pass
+        return "+∞"
     pct = (curr - prev) / (prev + 0.01) * 100
     sign = "+" if pct >= 0 else ""
     return f"{sign}{pct:.0f}%"
@@ -149,6 +160,7 @@ def build_grid_data(df):
     for _, row in df.iterrows():
         curr = row.get("usage_last_30_days", 0) or 0
         prev = row.get("usage_prev_month", 0) or 0
+        month_activated = row.get("Month Activated") or None
         status = row.get("roi_status", "")
         hide_roi = row.get("_hide_roi", False)
         bg_color = STATUS_BG.get(status, "#ffffff")
@@ -164,7 +176,7 @@ def build_grid_data(df):
             "Project":        row.get("PROJECT", ""),
             "Activated":      fmt_activated(row.get("Month Activated")),
             "1 mo":           int(curr),
-            "MoM %":          fmt_mom(curr, prev),
+            "MoM %":          fmt_mom(curr, prev, month_activated),
             "3 mo":           int(row.get("usage_last_3_months", 0) or 0),
             "12 mo":          int(row.get("usage_last_12_months", 0) or 0),
             "Hours Saved":    fmt_hours(row.get("time_saved_hours_12mo")),
@@ -173,7 +185,7 @@ def build_grid_data(df):
             "ROI %":          fmt_roi(row.get("roi_progress_percent")),
             # Raw values for the detail panel
             "_usage_1mo":     curr,
-            "_mom_pct":       fmt_mom(curr, prev),
+            "_mom_pct":       fmt_mom(curr, prev, month_activated),
             "_hours_saved":   fmt_hours(row.get("time_saved_hours_12mo")),
             "_total_saved":   fmt_currency(row.get("cumulative_cost_saved")),
             "_roi_pct":       fmt_roi(row.get("roi_progress_percent")),
@@ -184,18 +196,18 @@ def build_grid_data(df):
         })
 
     col_defs = [
-        {"field": "Client",      "sortable": True, "filter": True, "flex": 1, "minWidth": 100},
-        {"field": "Project",     "sortable": True, "filter": True, "flex": 2, "minWidth": 140,
+        {"field": "Client",      "sortable": True, "filter": True, "width": 140},
+        {"field": "Project",     "sortable": True, "filter": True, "width": 150,
          "cellStyle": {"js": "params.data._hide_roi ? {'paddingLeft': '28px', 'color': '#777'} : {}"}},
-        {"field": "Activated",   "sortable": True, "filter": True, "width": 120},
-        {"field": "1 mo",        "sortable": True, "filter": True, "width": 80,  "type": "numericColumn"},
-        {"field": "MoM %",       "sortable": True, "filter": True, "width": 90},
-        {"field": "3 mo",        "sortable": True, "filter": True, "width": 80,  "type": "numericColumn"},
-        {"field": "12 mo",       "sortable": True, "filter": True, "width": 80,  "type": "numericColumn"},
-        {"field": "Hours Saved", "sortable": True, "filter": True, "width": 110},
-        {"field": "Investment",  "sortable": True, "filter": True, "width": 110},
-        {"field": "Total Saved", "sortable": True, "filter": True, "width": 120},
-        {"field": "ROI %",       "sortable": True, "filter": True, "width": 90},
+        {"field": "Activated",   "sortable": True, "filter": True, "flex": 1, "minWidth": 100},
+        {"field": "1 mo",        "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "MoM %",       "sortable": True, "filter": True, "flex": 1, "minWidth": 70},
+        {"field": "3 mo",        "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "12 mo",       "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "Hours Saved", "sortable": True, "filter": True, "flex": 1, "minWidth": 90},
+        {"field": "Investment",  "sortable": True, "filter": True, "flex": 1, "minWidth": 90},
+        {"field": "Total Saved", "sortable": True, "filter": True, "flex": 1, "minWidth": 95},
+        {"field": "ROI %",       "sortable": True, "filter": True, "flex": 1, "minWidth": 70},
     ]
 
     return col_defs, rows
