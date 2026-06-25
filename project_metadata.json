@@ -1,66 +1,66 @@
 {
   "CELLCOM_HR CHATBOT": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 13680.0,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 1140.0,
+    "month_activated": "2025-08"
   },
   "CELLCOM_TABLEAU DE MARGE/CELLSELL": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 13680.0,
+    "minutes_saved_per_usage": 240.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 1140.0,
+    "month_activated": "2025-09"
   },
   "CELLCOM_ACCOUNTS PAYABLE": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 13680.0,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 1140.0,
+    "month_activated": "2025-09"
   },
   "TECHO BLOC_MATCHING": {
     "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "minutes_saved_per_usage": 5.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 0.0,
+    "month_activated": "2025-08"
   },
   "HEMA-QUEBEC_HEMY": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 7600.0,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 633.3333333,
+    "month_activated": "2025-03"
   },
   "HEMA-QUEBEC_CALENDRIER RESEAUX SOCIAUX": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 18000.0,
+    "minutes_saved_per_usage": 300.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 1500.0,
+    "month_activated": "2025-03"
   },
   "DIGITAD_FELLOW INTEGRATION": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 750.0,
+    "minutes_saved_per_usage": 15.0,
+    "client_hourly_rate": 40.0,
+    "monthly_roi_goal": 62.5,
+    "month_activated": "2025-09"
   },
   "DIGITAD_CLICKUP INTEGRATION": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 750.0,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 40.0,
+    "monthly_roi_goal": 62.5,
+    "month_activated": "2025-09"
   },
   "CHEMTECH_WILLY": {
-    "investment": null,
-    "minutes_saved_per_usage": null,
-    "client_hourly_rate": null,
-    "monthly_roi_goal": null,
-    "month_activated": null
+    "investment": 750.0,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": 62.5,
+    "month_activated": "2025-10"
   },
   "RETROMTL_FINANCIAL AID": {
     "investment": null,
