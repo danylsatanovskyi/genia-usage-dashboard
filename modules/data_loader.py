@@ -289,7 +289,7 @@ def calculate_metrics(df):
     df['project_cost'] = project_cost
     df['roi_net'] = df['cumulative_cost_saved'] - project_cost
     df['roi_reached'] = (project_cost > 0) & (df['roi_net'] >= 0)
-    df['roi_progress_percent'] = (df['cumulative_cost_saved'] / project_cost * 100).clip(upper=200).where(project_cost > 0)
+    df['roi_progress_percent'] = (df['cumulative_cost_saved'] / project_cost * 100).where(project_cost > 0)
 
     monthly_target = df['Monthly ROI Goal'].fillna(0)
 
