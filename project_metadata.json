@@ -27,11 +27,25 @@
     "monthly_roi_goal": 0.0,
     "month_activated": "2025-08"
   },
-  "HEMA-QUEBEC_HEMY": {
-    "investment": 7600.0,
+  "HEMA-QUEBEC_hemy": {
+    "investment": null,
     "minutes_saved_per_usage": 10.0,
     "client_hourly_rate": 50.0,
-    "monthly_roi_goal": 633.3333333,
+    "monthly_roi_goal": null,
+    "month_activated": "2025-03"
+  },
+  "HEMA-QUEBEC_email_agent": {
+    "investment": null,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": null,
+    "month_activated": "2025-03"
+  },
+  "HEMA-QUEBEC_phone_agent": {
+    "investment": null,
+    "minutes_saved_per_usage": 10.0,
+    "client_hourly_rate": 50.0,
+    "monthly_roi_goal": null,
     "month_activated": "2025-03"
   },
   "HEMA-QUEBEC_CALENDRIER RESEAUX SOCIAUX": {

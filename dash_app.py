@@ -750,50 +750,58 @@ def render_settings_accordion(store_data):
         worksheet = company_config.get("worksheet_name", company_name)
         project_fields = []
 
-        for project_name, _proj_cfg in company_config["projects"].items():
-            project_key = f"{worksheet}_{project_name}"
-            meta = metadata.get(project_key, {})
+        for project_name, proj_cfg in company_config["projects"].items():
+            # For split projects, show one row per sub-value (each has its own metadata).
+            # For regular projects, show one row for the project itself.
+            split_values = proj_cfg.get("split_values")
+            entries = (
+                [(sv, f"{worksheet}_{sv}") for sv in split_values]
+                if split_values
+                else [(project_name, f"{worksheet}_{project_name}")]
+            )
 
-            inv_val = meta.get("investment")
-            goal_val = meta.get("monthly_roi_goal")
-            mins_val = meta.get("minutes_saved_per_usage")
-            rate_val = meta.get("client_hourly_rate")
-            activated_val = meta.get("month_activated") or ""
+            for display_name, project_key in entries:
+                meta = metadata.get(project_key, {})
 
-            # Safe string IDs — replace spaces/slashes with underscores
-            safe_key = project_key.replace(" ", "_").replace("/", "_")
+                inv_val = meta.get("investment")
+                goal_val = meta.get("monthly_roi_goal")
+                mins_val = meta.get("minutes_saved_per_usage")
+                rate_val = meta.get("client_hourly_rate")
+                activated_val = meta.get("month_activated") or ""
 
-            project_fields.append(html.Div([
-                html.P(project_name, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
-                dbc.Row([
-                    dbc.Col([
-                        dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
-                        dbc.Input(id={"type": "meta-activated", "key": safe_key},
-                                  value=activated_val, placeholder="YYYY-MM", size="sm"),
-                    ], md=6, className="mb-2"),
-                    dbc.Col([
-                        dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                        dbc.Input(id={"type": "meta-investment", "key": safe_key},
-                                  type="number", value=inv_val, placeholder="e.g. 5000", size="sm"),
-                    ], md=6, className="mb-2"),
-                    dbc.Col([
-                        dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                        dbc.Input(id={"type": "meta-goal", "key": safe_key},
-                                  type="number", value=goal_val, placeholder="e.g. 500", size="sm"),
-                    ], md=6, className="mb-2"),
-                    dbc.Col([
-                        dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
-                        dbc.Input(id={"type": "meta-minutes", "key": safe_key},
-                                  type="number", value=mins_val, placeholder="e.g. 10", size="sm"),
-                    ], md=6, className="mb-2"),
-                    dbc.Col([
-                        dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
-                        dbc.Input(id={"type": "meta-rate", "key": safe_key},
-                                  type="number", value=rate_val, placeholder="e.g. 50", size="sm"),
-                    ], md=6, className="mb-2"),
-                ]),
-                html.Hr(style={"margin": "12px 0"}),
-            ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key, "data-worksheet": worksheet, "data-project-name": project_name}))
+                safe_key = project_key.replace(" ", "_").replace("/", "_")
+
+                project_fields.append(html.Div([
+                    html.P(display_name, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
+                            dbc.Input(id={"type": "meta-activated", "key": safe_key},
+                                      value=activated_val, placeholder="YYYY-MM", size="sm"),
+                        ], md=6, className="mb-2"),
+                        dbc.Col([
+                            dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                            dbc.Input(id={"type": "meta-investment", "key": safe_key},
+                                      type="number", value=inv_val, placeholder="e.g. 5000", size="sm"),
+                        ], md=6, className="mb-2"),
+                        dbc.Col([
+                            dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                            dbc.Input(id={"type": "meta-goal", "key": safe_key},
+                                      type="number", value=goal_val, placeholder="e.g. 500", size="sm"),
+                        ], md=6, className="mb-2"),
+                        dbc.Col([
+                            dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
+                            dbc.Input(id={"type": "meta-minutes", "key": safe_key},
+                                      type="number", value=mins_val, placeholder="e.g. 10", size="sm"),
+                        ], md=6, className="mb-2"),
+                        dbc.Col([
+                            dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
+                            dbc.Input(id={"type": "meta-rate", "key": safe_key},
+                                      type="number", value=rate_val, placeholder="e.g. 50", size="sm"),
+                        ], md=6, className="mb-2"),
+                    ]),
+                    html.Hr(style={"margin": "12px 0"}),
+                ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key}))
 
         accordion_items.append(
             dbc.AccordionItem(

@@ -140,26 +140,29 @@ def load_data(supabase, company_configs, project_metadata=None):
                         sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
 
                     # Sub-rows only — no aggregated total row.
-                    # All shared project-level fields are copied to every sub-row for display.
-                    # _split_primary=True only on the first sub-row so investment/ROI are
-                    # counted once in dashboard totals, not once per sub-row.
+                    # Each sub-row has its own metadata entry keyed by worksheet_name + sub_val,
+                    # so individual investments/rates can be configured per sub-project.
+                    # Falls back to the parent project entry if no sub-specific entry exists.
+                    worksheet_name = company_config.get('worksheet_name', company_name)
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
+                        sub_key = f"{worksheet_name}_{sub_val}"
+                        sub_meta = project_metadata.get(sub_key, metadata_entry)
                         sub_row = {
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
                             'PROJECT': str(sub_val),
-                            'Investment': metadata_entry.get('investment'),
-                            'Monthly ROI Goal': metadata_entry.get('monthly_roi_goal'),
-                            'Client Hourly Rate': metadata_entry.get('client_hourly_rate'),
-                            'Minutes Saved per usage': metadata_entry.get('minutes_saved_per_usage'),
-                            'Month Activated': metadata_entry.get('month_activated'),
+                            'Investment': sub_meta.get('investment'),
+                            'Monthly ROI Goal': sub_meta.get('monthly_roi_goal'),
+                            'Client Hourly Rate': sub_meta.get('client_hourly_rate'),
+                            'Minutes Saved per usage': sub_meta.get('minutes_saved_per_usage'),
+                            'Month Activated': sub_meta.get('month_activated'),
                             'Usage Type': usage_type_override,
                             'Months Active': None,
                             'usage_yesterday': sub_yesterday,
                             '_hide_roi': True,
                             '_project_group': project_name,
                             '_sort_order': order,
-                            '_split_primary': order == 0,
+                            '_split_primary': True,  # each sub-row has its own investment
                         }
                         sub_row.update(sub_monthly)
                         all_data.append(sub_row)
@@ -249,7 +252,7 @@ def calculate_metrics(df):
     df['project_cost'] = project_cost
     df['roi_net'] = df['cumulative_cost_saved'] - project_cost
     df['roi_reached'] = (project_cost > 0) & (df['roi_net'] >= 0)
-    df['roi_progress_percent'] = df['roi_net'] / project_cost.replace(0, np.nan) * 100
+    df['roi_progress_percent'] = df['cumulative_cost_saved'] / project_cost.replace(0, np.nan) * 100
 
     monthly_target = df['Monthly ROI Goal'].fillna(0)
 
