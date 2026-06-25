@@ -542,7 +542,7 @@ def main():
         if 'Total Saved' in display_table.columns:
             display_table['Total Saved'] = display_table['Total Saved'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
         if 'ROI %' in display_table.columns:
-            display_table['ROI %'] = display_table['ROI %'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "")
+            display_table['ROI %'] = display_table['ROI %'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "N/A")
         
         # Add colored dot prefix to Overall Status for visual indicator
         status_dots = {
