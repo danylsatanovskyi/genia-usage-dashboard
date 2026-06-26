@@ -204,7 +204,7 @@ def calculate_metrics(df):
     current_month_idx = datetime.now().month - 1
     available_months = [m for m in MONTHS_FR if m in df.columns]
 
-    df['usage_last_30_days'] = df[MONTHS_FR[current_month_idx]] if MONTHS_FR[current_month_idx] in df.columns else 0
+    df['usage_this_month'] = df[MONTHS_FR[current_month_idx]] if MONTHS_FR[current_month_idx] in df.columns else 0
 
     month_cols_3mo = []
     for i in range(0, 3):
@@ -230,7 +230,7 @@ def calculate_metrics(df):
     prev_month_idx = (current_month_idx - 1) % 12
     if MONTHS_FR[prev_month_idx] in df.columns and MONTHS_FR[current_month_idx] in df.columns:
         df['usage_prev_month'] = df[MONTHS_FR[prev_month_idx]]
-        df['mom_usage_percent'] = ((df['usage_last_30_days'] - df['usage_prev_month']) /
+        df['mom_usage_percent'] = ((df['usage_this_month'] - df['usage_prev_month']) /
                                     (df['usage_prev_month'] + 0.01) * 100)
     else:
         df['usage_prev_month'] = 0
@@ -240,10 +240,10 @@ def calculate_metrics(df):
 
     minutes_saved = df['Minutes Saved per usage']
     hourly_rate = df['Client Hourly Rate']
-    df['time_saved_hours_30d'] = df['usage_last_30_days'] * minutes_saved / 60
+    df['time_saved_hours_this_month'] = df['usage_this_month'] * minutes_saved / 60
     df['time_saved_hours_3mo'] = df['usage_last_3_months'] * minutes_saved / 60
     df['time_saved_hours_12mo'] = df['usage_last_12_months'] * minutes_saved / 60
-    df['cost_saved_30d'] = df['time_saved_hours_30d'] * hourly_rate
+    df['cost_saved_this_month'] = df['time_saved_hours_this_month'] * hourly_rate
     df['cost_saved_3mo'] = df['time_saved_hours_3mo'] * hourly_rate
     df['cost_saved_12mo'] = df['time_saved_hours_12mo'] * hourly_rate
     df['cumulative_cost_saved'] = df['cost_saved_12mo']
@@ -258,24 +258,24 @@ def calculate_metrics(df):
 
     def get_status(row):
         if row['project_cost'] == 0 or monthly_target[row.name] == 0:
-            if row['usage_last_30_days'] == 0 and row['usage_last_3_months'] == 0:
+            if row['usage_this_month'] == 0 and row['usage_last_3_months'] == 0:
                 return 'Inactive'
-            elif row['usage_last_30_days'] == 0:
+            elif row['usage_this_month'] == 0:
                 return 'No Recent Usage'
             elif row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
                 return 'Usage Dropped'
             return 'Active (Config Needed)'
         if row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
             return 'Usage Dropped'
-        elif row['usage_last_30_days'] == 0 and row['usage_last_3_months'] == 0:
+        elif row['usage_this_month'] == 0 and row['usage_last_3_months'] == 0:
             return 'Inactive'
-        elif row['usage_last_30_days'] == 0:
+        elif row['usage_this_month'] == 0:
             return 'No Recent Usage'
         elif row['roi_reached']:
             return 'ROI Reached'
-        elif row['cost_saved_30d'] >= monthly_target[row.name]:
+        elif row['cost_saved_this_month'] >= monthly_target[row.name]:
             return 'Above Target'
-        elif row['cost_saved_30d'] >= monthly_target[row.name] * 0.7:
+        elif row['cost_saved_this_month'] >= monthly_target[row.name] * 0.7:
             return 'On Track'
         return 'Below Target'
 

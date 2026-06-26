@@ -158,20 +158,16 @@ def build_grid_data(df):
 
     rows = []
     for _, row in df.iterrows():
-        curr = row.get("usage_last_30_days", 0) or 0
+        curr = row.get("usage_this_month", 0) or 0
         prev = row.get("usage_prev_month", 0) or 0
         month_activated = row.get("Month Activated") or None
         status = row.get("roi_status", "")
         hide_roi = row.get("_hide_roi", False)
-        bg_color = STATUS_BG.get(status, "#ffffff")
-        if hide_roi:
-            bg_color = "#f0f8f9"   # lighter tint for sub-rows
 
         rows.append({
             "_id":            str(_),
             "_roi_status":    status,
             "_hide_roi":      hide_roi,
-            "_bg_color":      bg_color,
             "Client":         row.get("CLIENT", ""),
             "Project":        row.get("PROJECT", ""),
             "Activated":      fmt_activated(row.get("Month Activated")),
@@ -196,18 +192,20 @@ def build_grid_data(df):
         })
 
     col_defs = [
-        {"field": "Client",      "sortable": True, "filter": True, "width": 140},
-        {"field": "Project",     "sortable": True, "filter": True, "width": 150,
-         "cellStyle": {"js": "params.data._hide_roi ? {'paddingLeft': '28px', 'color': '#777'} : {}"}},
-        {"field": "Activated",   "sortable": True, "filter": True, "flex": 1, "minWidth": 100},
-        {"field": "1 mo",        "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "MoM %",       "sortable": True, "filter": True, "flex": 1, "minWidth": 70},
-        {"field": "3 mo",        "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "12 mo",       "sortable": True, "filter": True, "flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "Hours Saved", "sortable": True, "filter": True, "flex": 1, "minWidth": 90},
-        {"field": "Investment",  "sortable": True, "filter": True, "flex": 1, "minWidth": 90},
-        {"field": "Total Saved", "sortable": True, "filter": True, "flex": 1, "minWidth": 95},
-        {"field": "ROI %",       "sortable": True, "filter": True, "flex": 1, "minWidth": 70},
+        {"field": "Client",      "sortable": True,"width": 140},
+        {"field": "Project",     "sortable": True,"width": 150,
+         "cellStyle": {"function": "params.data._hide_roi ? {'paddingLeft': '28px'} : {}"}},
+        {"field": "Activated",   "sortable": True,"flex": 1, "minWidth": 100},
+        {"field": "1 mo",        "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "MoM %",       "sortable": True,"flex": 1, "minWidth": 70,
+         "cellStyle": {"function": "var v = params.value; v === 'New' || (typeof v === 'string' && v.startsWith('+')) ? {background: '#d4edda', fontWeight: '600'} : (typeof v === 'string' && v.startsWith('-')) ? {background: '#f8d7da', fontWeight: '600'} : {}"}},
+        {"field": "3 mo",        "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "12 mo",       "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
+        {"field": "Hours Saved", "sortable": True,"flex": 1, "minWidth": 90},
+        {"field": "Investment",  "sortable": True,"flex": 1, "minWidth": 90},
+        {"field": "Total Saved", "sortable": True,"flex": 1, "minWidth": 95},
+        {"field": "ROI %",       "sortable": True,"flex": 1, "minWidth": 70,
+         "cellStyle": {"function": "params.data._roi_pct_raw == null ? {} : params.data._roi_pct_raw >= 100 ? {background: '#d4edda', fontWeight: '600'} : params.data._roi_pct_raw >= 70 ? {background: '#fff3cd', fontWeight: '600'} : {background: '#f8d7da', fontWeight: '600'}"}},
     ]
 
     return col_defs, rows
@@ -305,31 +303,32 @@ def make_portfolio_tab():
                 dbc.Col(make_metric_card("ROI Reached", "metric-roi-reached"), xs=12, sm=6, md=True, className="mb-3"),
             ], className="mb-4"),
 
-            # Portfolio table
+            # Column visibility toggle
+            html.Div([
+                dbc.DropdownMenu(
+                    label="Columns",
+                    id="columns-dropdown",
+                    color="light",
+                    size="sm",
+                    style={"marginBottom": "12px"},
+                    children=dbc.Checklist(
+                        id="column-visibility",
+                        options=[
+                            {"label": col, "value": col}
+                            for col in ["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"]
+                        ],
+                        value=["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"],
+                        style={"padding": "8px 16px"},
+                    ),
+                ),
+            ]),
+
+            # Portfolio table (grouped by client)
             dcc.Loading(
                 id="loading-table",
                 type="circle",
                 color=BRAND,
-                children=dag.AgGrid(
-                    id="portfolio-table",
-                    rowData=[],
-                    columnDefs=[],
-                    defaultColDef={
-                        "resizable": True,
-                        "suppressMovable": False,
-                        "cellStyle": {"fontSize": "13px"},
-                    },
-                    dashGridOptions={
-                        "rowSelection": "single",
-                        "animateRows": True,
-                        "suppressCellFocus": True,
-                        "getRowStyle": {
-                            "function": "params.data ? {background: params.data._bg_color} : {}"
-                        },
-                    },
-                    style={"height": "440px", "width": "100%"},
-                    className="ag-theme-alpine",
-                ),
+                children=html.Div(id="client-accordion-container"),
             ),
 
             # Solution details panel
@@ -394,9 +393,11 @@ app.layout = html.Div(
     style={"fontFamily": "'Inter', 'Segoe UI', sans-serif", "background": BG, "minHeight": "100vh"},
     children=[
         # Stores
+        dcc.Location(id="url", refresh=False),
         dcc.Store(id="data-store"),
         dcc.Store(id="settings-inputs-store"),   # holds current settings field values
         dcc.Store(id="hidden-store"),            # holds hidden projects list
+        dcc.Store(id="col-vis-store", storage_type="local"),  # persists column visibility across reloads
 
         # Layout: sidebar + main
         html.Div(
@@ -527,20 +528,42 @@ def update_filter_options(store_data):
 
 
 # ---------------------------------------------------------------------------
+# Column visibility persistence
+# ---------------------------------------------------------------------------
+ALL_COLS = ["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"]
+
+@app.callback(
+    Output("col-vis-store", "data"),
+    Input("column-visibility", "value"),
+    prevent_initial_call=True,
+)
+def save_col_visibility(value):
+    return value
+
+@app.callback(
+    Output("column-visibility", "value"),
+    Input("url", "pathname"),
+    State("col-vis-store", "data"),
+)
+def load_col_visibility(_, stored):
+    return stored if stored is not None else ALL_COLS
+
+
+# ---------------------------------------------------------------------------
 # 3. Update portfolio table based on filters
 # ---------------------------------------------------------------------------
 @app.callback(
-    Output("portfolio-table", "rowData"),
-    Output("portfolio-table", "columnDefs"),
+    Output("client-accordion-container", "children"),
     Input("data-store", "data"),
     Input("filter-client", "value"),
     Input("filter-project", "value"),
     Input("filter-status", "value"),
+    Input("column-visibility", "value"),
 )
-def update_table(store_data, client_filter, project_filter, status_filter):
+def update_table(store_data, client_filter, project_filter, status_filter, visible_cols):
     df = df_from_store(store_data)
     if df.empty:
-        return [], []
+        return []
 
     if client_filter and client_filter != "All":
         df = df[df["CLIENT"] == client_filter]
@@ -549,8 +572,52 @@ def update_table(store_data, client_filter, project_filter, status_filter):
     if status_filter and status_filter != "All":
         df = df[df["roi_status"] == status_filter]
 
-    col_defs, rows = build_grid_data(df)
-    return rows, col_defs
+    col_defs, all_rows = build_grid_data(df)
+    visible_set = set(visible_cols or [])
+    col_defs_no_client = [
+        c for c in col_defs
+        if c["field"] != "Client" and c["field"] in visible_set
+    ]
+
+    ROW_H, HEADER_H = 42, 48
+    accordion_items = []
+    for client in df["CLIENT"].unique():
+        client_rows = [r for r in all_rows if r.get("Client") == client]
+        grid_height = max(120, len(client_rows) * ROW_H + HEADER_H)
+        grid = dag.AgGrid(
+            id={"type": "client-grid", "index": client},
+            rowData=client_rows,
+            columnDefs=col_defs_no_client,
+            defaultColDef={
+                "resizable": True,
+                "suppressMovable": False,
+                "suppressMenu": True,
+                "cellStyle": {"fontSize": "13px"},
+            },
+            dashGridOptions={
+                "rowSelection": "single",
+                "animateRows": True,
+                "suppressCellFocus": True,
+            },
+            style={"height": f"{grid_height}px", "width": "100%"},
+            className="ag-theme-alpine",
+        )
+
+        accordion_items.append(
+            dbc.AccordionItem(
+                grid,
+                title=client,
+                item_id=f"client-{client}",
+            )
+        )
+
+    return dbc.Accordion(
+        accordion_items,
+        start_collapsed=False,
+        always_open=True,
+        flush=True,
+        style={"marginBottom": "16px"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -602,10 +669,11 @@ def update_metrics(store_data, client_filter, project_filter, status_filter):
 # ---------------------------------------------------------------------------
 @app.callback(
     Output("solution-details", "children"),
-    Input("portfolio-table", "selectedRows"),
+    Input({"type": "client-grid", "index": dash.ALL}, "selectedRows"),
     State("data-store", "data"),
 )
-def show_solution_details(selected_rows, store_data):
+def show_solution_details(all_selected_rows, store_data):
+    selected_rows = next((sr for sr in all_selected_rows if sr), None)
     if not selected_rows:
         return html.Div(
             "Click a row to see solution details.",

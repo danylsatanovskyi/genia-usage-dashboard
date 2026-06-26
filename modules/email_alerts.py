@@ -175,7 +175,7 @@ def check_and_send_alerts(df, smtp_config, alert_config):
 
             <h3>Details:</h3>
             <ul>
-                <li>Last 30 days usage: {row.get('usage_last_30_days', 0):.0f}</li>
+                <li>This month usage: {row.get('usage_this_month', 0):.0f}</li>
                 <li>Last 3 months total: {row.get('usage_last_3_months', 0):.0f}</li>
                 <li>ROI Status: {row.get('roi_status', 'Unknown')}</li>
             </ul>
