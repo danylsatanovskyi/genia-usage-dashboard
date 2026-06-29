@@ -1341,7 +1341,7 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
     # Build last 6 months of hours saved from monthly usage × rates
     _6mo_labels = []
     _6mo_hrs    = []
-    for i in range(5, -1, -1):
+    for i in range(11, -1, -1):
         idx        = (current_month_idx - i) % 12
         year       = now.year if idx <= current_month_idx else now.year - 1
         month_name = MONTHS_FR[idx]
