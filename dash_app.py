@@ -25,36 +25,54 @@ from modules.data_loader import load_data, calculate_metrics, MONTHS_FR
 BRAND = "#00c4ce"
 DARK = "#13100d"
 BG = "#f8f9fa"
-PROJECT_METADATA_FILE = "project_metadata.json"
-HIDDEN_PROJECTS_FILE = "hidden_projects.json"
+# Metadata and hidden projects are stored in Supabase (see project_metadata / hidden_projects tables)
 
 # ---------------------------------------------------------------------------
 # Helpers — metadata / hidden projects
 # ---------------------------------------------------------------------------
 
+def _sb():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
 def load_project_metadata():
-    if os.path.exists(PROJECT_METADATA_FILE):
-        with open(PROJECT_METADATA_FILE) as f:
-            return json.load(f)
-    return {}
+    try:
+        rows = _sb().table("project_metadata").select("*").execute().data
+        return {r["key"]: {k: v for k, v in r.items() if k != "key"} for r in rows}
+    except Exception as e:
+        print(f"load_project_metadata error: {e}")
+        return {}
 
 
 def save_project_metadata(metadata):
-    with open(PROJECT_METADATA_FILE, "w") as f:
-        json.dump(metadata, f, indent=2)
+    try:
+        rows = [{"key": k, **{fk: fv for fk, fv in v.items()}} for k, v in metadata.items()]
+        _sb().table("project_metadata").upsert(rows).execute()
+    except Exception as e:
+        print(f"save_project_metadata error: {e}")
 
 
 def load_hidden_projects():
-    if os.path.exists(HIDDEN_PROJECTS_FILE):
-        with open(HIDDEN_PROJECTS_FILE) as f:
-            data = json.load(f)
-            return data.get("hidden", [])
-    return []
+    try:
+        rows = _sb().table("hidden_projects").select("project_name").execute().data
+        return [r["project_name"] for r in rows]
+    except Exception as e:
+        print(f"load_hidden_projects error: {e}")
+        return []
 
 
-def save_hidden_projects(hidden_list):
-    with open(HIDDEN_PROJECTS_FILE, "w") as f:
-        json.dump({"hidden": hidden_list}, f, indent=2)
+def hide_project(project_name):
+    try:
+        _sb().table("hidden_projects").upsert({"project_name": project_name}).execute()
+    except Exception as e:
+        print(f"hide_project error: {e}")
+
+
+def unhide_project(project_name):
+    try:
+        _sb().table("hidden_projects").delete().eq("project_name", project_name).execute()
+    except Exception as e:
+        print(f"unhide_project error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -136,16 +154,23 @@ def fmt_activated(val):
 # Row color by roi_status
 # ---------------------------------------------------------------------------
 
-STATUS_BG = {
-    "ROI Reached":    "#d4edda",   # green tint
-    "Above Target":   "#d4edda",
-    "On Track":       "#fff3cd",   # amber tint
-    "Below Target":   "#f8d7da",   # red tint
-    "Usage Dropped":  "#f8d7da",
-    "No Recent Usage":"#fff3cd",
-    "Inactive":       "#e2e3e5",   # gray
-    "Active (Config Needed)": "#e8f4f8",
+ACTIVITY_CHIP = {
+    "Active":          ("#d4edda", "#155724"),
+    "No Recent Usage": ("#fff3cd", "#856404"),
+    "Inactive":        ("#e2e3e5", "#383d41"),
 }
+
+ROI_CHIP = {
+    "ROI Reached":  ("#d4edda", "#155724"),
+    "Above Mo. Target": ("#c3e6cb", "#155724"),
+    "Below Mo. Target": ("#f8d7da", "#721c24"),
+    "Usage Dropped":("#f8d7da", "#721c24"),
+    "No Target":    ("#e8f4f8", "#0c5460"),
+    "No Config":    ("#e2e3e5", "#383d41"),
+}
+
+# Keep for modal title badge
+STATUS_BG = {**{k: v[0] for k, v in ACTIVITY_CHIP.items()}, **{k: v[0] for k, v in ROI_CHIP.items()}}
 
 
 # ---------------------------------------------------------------------------
@@ -164,52 +189,189 @@ def build_grid_data(df):
         status = row.get("roi_status", "")
         hide_roi = row.get("_hide_roi", False)
 
+        mo_target = row.get("Monthly ROI Goal")
+        mo_roi_raw = row.get("mo_roi_pct")
         rows.append({
-            "_id":            str(_),
-            "_roi_status":    status,
-            "_hide_roi":      hide_roi,
-            "Client":         row.get("CLIENT", ""),
-            "Project":        row.get("PROJECT", ""),
-            "Activated":      fmt_activated(row.get("Month Activated")),
-            "1 mo":           int(curr),
-            "MoM %":          fmt_mom(curr, prev, month_activated),
-            "3 mo":           int(row.get("usage_last_3_months", 0) or 0),
-            "12 mo":          int(row.get("usage_last_12_months", 0) or 0),
-            "Hours Saved":    fmt_hours(row.get("time_saved_hours_12mo")),
-            "Investment":     fmt_currency(row.get("project_cost")) if row.get("project_cost") else "",
-            "Total Saved":    fmt_currency(row.get("cumulative_cost_saved")),
-            "ROI %":          fmt_roi(row.get("roi_progress_percent")),
+            "_id":              str(_),
+            "_roi_status":      status,
+            "_activity_status": row.get("activity_status", ""),
+            "_hide_roi":        hide_roi,
+            "Client":           row.get("CLIENT", ""),
+            "Project":          row.get("PROJECT", ""),
+            "Activated":        fmt_activated(row.get("Month Activated")),
+            "Mo Target":        fmt_currency(mo_target) if mo_target else "",
+            "1 mo":             int(curr),
+            "MoM %":            fmt_mom(curr, prev, month_activated),
+            "Mo ROI %":         fmt_roi(mo_roi_raw),
+            "_mo_roi_pct_raw":  mo_roi_raw,
+            "3 mo":             int(row.get("usage_last_3_months", 0) or 0),
+            "12 mo":            int(row.get("usage_last_12_months", 0) or 0),
+            "Hrs This Mo":      fmt_hours(row.get("time_saved_hours_this_month")),
+            "Hrs 12mo":         fmt_hours(row.get("time_saved_hours_12mo")),
+            "Investment":       fmt_currency(row.get("project_cost")) if row.get("project_cost") else "",
+            "Total Saved":      fmt_currency(row.get("cumulative_cost_saved")),
+            "ROI %":            fmt_roi(row.get("roi_progress_percent")),
             # Raw values for the detail panel
-            "_usage_1mo":     curr,
-            "_mom_pct":       fmt_mom(curr, prev, month_activated),
-            "_hours_saved":   fmt_hours(row.get("time_saved_hours_12mo")),
-            "_total_saved":   fmt_currency(row.get("cumulative_cost_saved")),
-            "_roi_pct":       fmt_roi(row.get("roi_progress_percent")),
-            "_roi_pct_raw":   row.get("roi_progress_percent"),
-            "_mom_pct_raw":   row.get("mom_usage_percent"),
-            "_breakeven":     row.get("breakeven_estimate", ""),
-            "_project_group": row.get("_project_group", ""),
-            "_client":        row.get("CLIENT", ""),
+            "_usage_1mo":       f"{curr} usages",
+            "_usage_3mo":       f"{int(row.get('usage_last_3_months', 0) or 0)} usages",
+            "_usage_12mo":      f"{int(row.get('usage_last_12_months', 0) or 0)} usages",
+            "_mom_pct":         fmt_mom(curr, prev, month_activated),
+            "_hrs_this_mo":     fmt_hours(row.get("time_saved_hours_this_month")),
+            "_hrs_prev_mo":     fmt_hours((row.get("usage_prev_month") or 0) * (row.get("Minutes Saved per usage") or 0) / 60),
+            "_hrs_12mo":        fmt_hours(row.get("time_saved_hours_12mo")),
+            "_investment":      fmt_currency(row.get("project_cost")) if row.get("project_cost") else "—",
+            "_saved_this_mo":   fmt_currency(row.get("cost_saved_this_month")) or "—",
+            "_total_saved":     fmt_currency(row.get("cumulative_cost_saved")),
+            "_mo_target":       fmt_currency(mo_target) if mo_target else "—",
+            "_roi_pct":         fmt_roi(row.get("roi_progress_percent")),
+            "_roi_pct_raw":     row.get("roi_progress_percent"),
+            "_mom_pct_raw":     row.get("mom_usage_percent"),
+            "_breakeven":       row.get("breakeven_estimate", ""),
+            "_project_group":   row.get("_project_group", ""),
+            "_client":          row.get("CLIENT", ""),
+            # Boolean ROI tags for multi-chip column
+            "_tag_roi_reached":  bool(row.get("tag_roi_reached", False)),
+            "_tag_usage_dropped":bool(row.get("tag_usage_dropped", False)),
+            "_tag_above_target": bool(row.get("tag_above_target", False)),
+            "_tag_below_target": bool(row.get("tag_below_target", False)),
+            "_tag_no_target":    bool(row.get("tag_no_target", False)),
+            "_tag_no_config":    bool(row.get("tag_no_config", False)),
         })
 
     col_defs = [
-        {"field": "Client",      "sortable": True,"width": 140},
-        {"field": "Project",     "sortable": True,"width": 150,
+        {"field": "Client",      "sortable": True, "flex": 2, "minWidth": 120},
+        {"field": "Project",     "sortable": True, "flex": 2, "minWidth": 130,
          "cellStyle": {"function": "return params.data._hide_roi ? {paddingLeft: '28px'} : {}"}},
-        {"field": "Activated",   "sortable": True,"flex": 1, "minWidth": 100},
-        {"field": "1 mo",        "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "MoM %",       "sortable": True,"flex": 1, "minWidth": 70,
+        {"field": "Activated",   "sortable": True, "flex": 1, "minWidth": 100},
+        {"field": "Active?",     "sortable": True, "flex": 1, "minWidth": 75,
+         "cellStyle": {"function": "params.data['Active?'] === 'Yes' ? {color: '#2e7d32', fontWeight: '600'} : {color: '#c62828', fontWeight: '600'}"}},
+        {"field": "Mo Target",   "sortable": True, "flex": 1, "minWidth": 100},
+        {"field": "1 mo",        "sortable": True, "flex": 1, "minWidth": 65,  "type": "numericColumn"},
+        {"field": "MoM %",       "sortable": True, "flex": 1, "minWidth": 75,
          "cellStyle": {"function": "params.data._mom_pct_raw == null ? {} : params.data._mom_pct_raw > 0 ? {background: '#d4edda', fontWeight: '600'} : params.data._mom_pct_raw < 0 ? {background: '#f8d7da', fontWeight: '600'} : {}"}},
-        {"field": "3 mo",        "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "12 mo",       "sortable": True,"flex": 1, "minWidth": 60,  "type": "numericColumn"},
-        {"field": "Hours Saved", "sortable": True,"flex": 1, "minWidth": 90},
-        {"field": "Investment",  "sortable": True,"flex": 1, "minWidth": 90},
-        {"field": "Total Saved", "sortable": True,"flex": 1, "minWidth": 95},
-        {"field": "ROI %",       "sortable": True,"flex": 1, "minWidth": 70,
+        {"field": "Mo ROI %",    "sortable": True, "flex": 1, "minWidth": 85,
+         "cellStyle": {"function": "params.data._mo_roi_pct_raw == null || isNaN(params.data._mo_roi_pct_raw) ? {} : params.data._mo_roi_pct_raw >= 100 ? {background: '#d4edda', fontWeight: '600'} : params.data._mo_roi_pct_raw >= 70 ? {background: '#fff3cd', fontWeight: '600'} : {background: '#f8d7da', fontWeight: '600'}"}},
+        {"field": "3 mo",        "sortable": True, "flex": 1, "minWidth": 65,  "type": "numericColumn"},
+        {"field": "12 mo",       "sortable": True, "flex": 1, "minWidth": 65,  "type": "numericColumn"},
+        {"field": "Hrs This Mo", "sortable": True, "flex": 1, "minWidth": 100},
+        {"field": "Hrs 12mo",    "sortable": True, "flex": 1, "minWidth": 90},
+        {"field": "Investment",  "sortable": True, "flex": 1, "minWidth": 100},
+        {"field": "Total Saved", "sortable": True, "flex": 1, "minWidth": 105},
+        {"field": "ROI %",       "sortable": True, "flex": 1, "minWidth": 75,
          "cellStyle": {"function": "params.data._roi_pct_raw == null ? {} : params.data._roi_pct_raw >= 100 ? {background: '#d4edda', fontWeight: '600'} : params.data._roi_pct_raw >= 70 ? {background: '#fff3cd', fontWeight: '600'} : {background: '#f8d7da', fontWeight: '600'}"}},
     ]
 
     return col_defs, rows
+
+
+def build_client_table(client_rows):
+    """Render a client's projects as a styled HTML table with a details button per row."""
+    import math as _math
+
+    th_style = {
+        "fontSize": "11px", "fontWeight": "700", "color": "#888",
+        "padding": "8px 12px", "borderBottom": "2px solid #eee",
+        "background": "#f8f9fa", "textTransform": "uppercase", "letterSpacing": "0.4px",
+    }
+    td_base = {"padding": "10px 12px", "fontSize": "13px", "verticalAlign": "middle", "borderBottom": "1px solid #f3f3f3"}
+
+    headers = html.Thead(html.Tr([
+        html.Th("Project",          style=th_style),
+        html.Th("Activity",         style={**th_style, "textAlign": "center"}),
+        html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}),
+        html.Th("1 mo",             style={**th_style, "textAlign": "right"}),
+        html.Th("MoM %",            style={**th_style, "textAlign": "center"}),
+        html.Th("Mo ROI %",         style={**th_style, "textAlign": "center"}),
+        html.Th("ROI %",            style={**th_style, "textAlign": "center"}),
+        html.Th("",                 style=th_style),
+    ]))
+
+    def _nan(v):
+        return v is None or (isinstance(v, float) and (_math.isnan(v) or _math.isinf(v)))
+
+    def _chip(label, color_map):
+        bg, fg = color_map.get(label, ("#e2e3e5", "#383d41"))
+        return html.Span(label, style={
+            "background": bg, "color": fg,
+            "fontSize": "10px", "fontWeight": "700",
+            "padding": "2px 8px", "borderRadius": "4px",
+            "whiteSpace": "nowrap", "display": "inline-block",
+        })
+
+    ROI_TAG_MAP = [
+        ("_tag_roi_reached",  "ROI Reached"),
+        ("_tag_above_target", "Above Mo. Target"),
+        ("_tag_below_target", "Below Mo. Target"),
+        ("_tag_usage_dropped","Usage Dropped"),
+        ("_tag_no_target",    "No Target"),
+        ("_tag_no_config",    "No Config"),
+    ]
+
+    data_rows = []
+    for row in client_rows:
+        roi_status      = row.get("_roi_status", "")
+        activity_status = row.get("_activity_status", "")
+        hide_roi        = row.get("_hide_roi", False)
+
+        border_color = ACTIVITY_CHIP.get(activity_status, ("#e2e3e5", "#383d41"))[0]
+
+        # Build ROI performance chips — include every tag that is True
+        roi_chips = html.Div(
+            [_chip(label, ROI_CHIP) for key, label in ROI_TAG_MAP if row.get(key)],
+            style={"display": "flex", "flexDirection": "column", "gap": "3px", "alignItems": "flex-start"},
+        )
+
+        mom_raw = row.get("_mom_pct_raw")
+        mom_bg  = "transparent" if _nan(mom_raw) else ("#d4edda" if mom_raw > 0 else "#f8d7da" if mom_raw < 0 else "transparent")
+
+        mr_raw  = row.get("_mo_roi_pct_raw")
+        mr_bg   = "transparent" if _nan(mr_raw) else ("#d4edda" if mr_raw >= 100 else "#f8d7da")
+
+        roi_bg  = "#d4edda" if row.get("_tag_roi_reached") else (
+                  "#f8d7da" if not _nan(row.get("_roi_pct_raw")) else "transparent"
+        )
+
+        project_key = f"{row.get('_client', '')}___{row.get('Project', '')}"
+
+        data_rows.append(html.Tr([
+            html.Td(
+                row.get("Project", ""),
+                style={**td_base, "fontWeight": "500",
+                       "paddingLeft": "32px" if hide_roi else "14px",
+                       "borderLeft": f"4px solid {border_color}"},
+            ),
+            html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}),
+            html.Td(roi_chips, style={**td_base, "minWidth": "140px"}),
+            html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}),
+            html.Td(row.get("MoM %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}),
+            html.Td(row.get("Mo ROI %", ""), style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}),
+            html.Td(row.get("ROI %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}),
+            html.Td(
+                html.Button(
+                    [html.I(className="bi bi-arrow-right", style={"fontSize": "11px"}), " Details"],
+                    id={"type": "row-details-btn", "index": project_key},
+                    n_clicks=0,
+                    style={
+                        "background": BRAND, "color": "white", "border": "none",
+                        "borderRadius": "12px", "padding": "4px 11px",
+                        "fontSize": "11px", "fontWeight": "600", "cursor": "pointer",
+                        "whiteSpace": "nowrap", "letterSpacing": "0.2px",
+                    },
+                ),
+                style={**td_base, "textAlign": "right", "width": "80px"},
+            ),
+        ]))
+
+    return html.Table(
+        [headers, html.Tbody(data_rows)],
+        style={"width": "100%", "borderCollapse": "collapse", "marginBottom": 0},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Column list (defined here so make_portfolio_tab can reference it)
+# ---------------------------------------------------------------------------
+TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 
 
 # ---------------------------------------------------------------------------
@@ -268,24 +430,76 @@ def make_sidebar():
                              clearable=False, style={"fontSize": "13px"}),
             ]),
             html.Div([
+                html.Label("Filter by Activity", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
+                dcc.Dropdown(id="filter-activity", options=[], value=None,
+                             multi=True, placeholder="Any activity…", style={"fontSize": "13px"}),
+            ]),
+            html.Div([
                 html.Label("Filter by Status", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                dcc.Dropdown(id="filter-status", options=[], value="All",
-                             clearable=False, style={"fontSize": "13px"}),
+                dcc.Dropdown(id="filter-roi-status", options=[], value=None,
+                             multi=True, placeholder="Any status…", style={"fontSize": "13px"}),
             ]),
         ],
     )
 
 
-def make_metric_card(title, value_id, icon=""):
+def make_granularity_toggle(selected="monthly"):
+    options = [("Daily", "daily"), ("Weekly", "weekly"), ("Monthly", "monthly")]
+    buttons = []
+    for label, value in options:
+        active = value == selected
+        buttons.append(html.Button(
+            label,
+            id={"type": "gran-btn", "index": value},
+            n_clicks=0,
+            style={
+                "padding": "5px 16px", "borderRadius": "16px", "border": "none",
+                "fontSize": "12px", "fontWeight": "600", "cursor": "pointer",
+                "background": BRAND if active else "transparent",
+                "color": "white" if active else "#888",
+                "boxShadow": "0 1px 4px rgba(0,196,206,0.3)" if active else "none",
+                "transition": "background 0.15s, color 0.15s",
+            }
+        ))
+    return html.Div(buttons, style={
+        "background": "#f0f0f0", "borderRadius": "20px",
+        "padding": "3px", "display": "inline-flex", "gap": "2px",
+    })
+
+
+def make_metric_card(title, value_id, icon, subtitle):
     return dbc.Card(
         dbc.CardBody([
-            html.P(title, style={"fontSize": "12px", "color": "#666", "marginBottom": "4px", "fontWeight": "600", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
-            html.H4(id=value_id, children="—", style={"color": BRAND, "fontWeight": "700", "marginBottom": 0}),
-        ]),
+            html.Div([
+                html.Div(
+                    html.I(className=f"bi {icon}"),
+                    style={
+                        "width": "38px", "height": "38px", "flexShrink": 0,
+                        "background": f"rgba(0,196,206,0.12)",
+                        "borderRadius": "10px",
+                        "display": "flex", "alignItems": "center",
+                        "justifyContent": "center",
+                        "fontSize": "17px", "color": BRAND,
+                    },
+                ),
+                html.P(title, style={
+                    "fontSize": "11px", "color": "#999", "marginBottom": 0,
+                    "fontWeight": "700", "textTransform": "uppercase",
+                    "letterSpacing": "0.6px", "marginLeft": "10px", "lineHeight": "1.3",
+                }),
+            ], style={"display": "flex", "alignItems": "center", "marginBottom": "14px"}),
+            html.Div(id=value_id, children="—", style={
+                "fontSize": "26px", "fontWeight": "800", "color": DARK,
+                "letterSpacing": "-0.5px", "marginBottom": "4px",
+            }),
+            html.P(subtitle, style={"fontSize": "11px", "color": "#bbb", "marginBottom": 0}),
+        ], style={"padding": "18px 20px"}),
         style={
-            "borderLeft": f"4px solid {BRAND}",
-            "borderRadius": "8px",
-            "boxShadow": "0 1px 4px rgba(0,0,0,0.08)",
+            "borderRadius": "14px",
+            "border": "none",
+            "boxShadow": "0 2px 12px rgba(0,0,0,0.06)",
+            "background": "white",
+            "height": "100%",
         },
     )
 
@@ -297,32 +511,10 @@ def make_portfolio_tab():
         children=[
             # Summary cards
             dbc.Row([
-                dbc.Col(make_metric_card("Total Solutions", "metric-total-solutions"), xs=12, sm=6, md=True, className="mb-3"),
-                dbc.Col(make_metric_card("Hours Saved (12mo)", "metric-hours-saved"), xs=12, sm=6, md=True, className="mb-3"),
-                dbc.Col(make_metric_card("Total Savings (12mo)", "metric-total-savings"), xs=12, sm=6, md=True, className="mb-3"),
-                dbc.Col(make_metric_card("Total Investment", "metric-total-investment"), xs=12, sm=6, md=True, className="mb-3"),
-                dbc.Col(make_metric_card("ROI Reached", "metric-roi-reached"), xs=12, sm=6, md=True, className="mb-3"),
+                dbc.Col(make_metric_card("Solutions",   "metric-total-solutions",  "bi-grid",           "monitored projects"),    xs=12, sm=4, md=True, className="mb-3"),
+                dbc.Col(make_metric_card("Active",      "metric-active-projects",  "bi-lightning-fill", "with usage this month"), xs=12, sm=4, md=True, className="mb-3"),
+                dbc.Col(make_metric_card("ROI Reached", "metric-roi-reached",      "bi-trophy",         "projects fully paid off"),xs=12, sm=4, md=True, className="mb-3"),
             ], className="mb-4"),
-
-            # Column visibility toggle
-            html.Div([
-                dbc.DropdownMenu(
-                    label="Columns",
-                    id="columns-dropdown",
-                    color="light",
-                    size="sm",
-                    style={"marginBottom": "12px"},
-                    children=dbc.Checklist(
-                        id="column-visibility",
-                        options=[
-                            {"label": col, "value": col}
-                            for col in ["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"]
-                        ],
-                        value=["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"],
-                        style={"padding": "8px 16px"},
-                    ),
-                ),
-            ]),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -332,15 +524,74 @@ def make_portfolio_tab():
                 children=html.Div(id="client-accordion-container"),
             ),
 
-            # Solution details panel
-            html.Div(id="solution-details", style={"marginTop": "24px"}),
+            html.Div(style={"marginTop": "8px"}, children=[
+                html.P("Click any row to view full project details.", style={"color": "#aaa", "fontSize": "13px", "fontStyle": "italic"}),
+            ]),
         ],
     )
 
 
+STATUS_LEGEND = {
+    "Activity": [
+        ("Active",           ACTIVITY_CHIP["Active"],           "Has usage this month."),
+        ("No Recent Usage",  ACTIVITY_CHIP["No Recent Usage"],  "No usage this month, but had usage in the last 3 months."),
+        ("Inactive",         ACTIVITY_CHIP["Inactive"],         "No usage in the last 3 months."),
+    ],
+    "ROI & Performance": [
+        ("ROI Reached",   ROI_CHIP["ROI Reached"],   "Cumulative savings have fully recovered the investment."),
+        ("Above Mo. Target",  ROI_CHIP["Above Mo. Target"],  "This month's savings met or exceeded the monthly ROI goal."),
+        ("Below Mo. Target",  ROI_CHIP["Below Mo. Target"],  "This month's savings fell short of the monthly ROI goal."),
+        ("Usage Dropped", ROI_CHIP["Usage Dropped"], "Recent 3-month average is >50% lower than the historical baseline (only flagged if historical avg > 5 uses/mo)."),
+        ("No Target",     ROI_CHIP["No Target"],     "Investment is set but no monthly ROI goal has been configured."),
+        ("No Config",     ROI_CHIP["No Config"],     "No investment amount has been entered yet."),
+    ],
+}
+
+
+def make_status_legend():
+    sections = []
+    for section_title, entries in STATUS_LEGEND.items():
+        rows = []
+        for label, (bg, fg), description in entries:
+            rows.append(
+                html.Div([
+                    html.Div(
+                        html.Span(label, style={
+                            "background": bg, "color": fg,
+                            "fontSize": "11px", "fontWeight": "700",
+                            "padding": "3px 10px", "borderRadius": "4px",
+                            "whiteSpace": "nowrap",
+                        }),
+                        style={"minWidth": "130px", "flexShrink": 0},
+                    ),
+                    html.P(description, style={
+                        "fontSize": "12px", "color": "#555", "marginBottom": 0, "lineHeight": "1.4",
+                    }),
+                ], style={
+                    "display": "flex", "alignItems": "center", "gap": "14px",
+                    "padding": "10px 14px",
+                    "borderBottom": "1px solid #f3f3f3",
+                })
+            )
+        sections.append(html.Div([
+            html.P(section_title, style={
+                "fontSize": "11px", "fontWeight": "700", "color": "#888",
+                "textTransform": "uppercase", "letterSpacing": "0.5px",
+                "margin": "0", "padding": "10px 14px 6px",
+                "background": "#f8f9fa", "borderBottom": "1px solid #eee",
+            }),
+            *rows,
+        ], style={
+            "border": "1px solid #eee", "borderRadius": "10px",
+            "overflow": "hidden", "marginBottom": "12px",
+        }))
+
+    return html.Div(sections)
+
+
 def make_settings_tab():
     return dbc.Tab(
-        label="Settings",
+        label="Configuration",
         tab_id="tab-settings",
         children=[
             dbc.Row([
@@ -361,6 +612,9 @@ def make_settings_tab():
                     html.Div(id="save-config-status", style={"marginTop": "10px"}),
                 ], md=8),
                 dbc.Col([
+                    html.H5("Status Reference", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
+                    make_status_legend(),
+                    html.Hr(style={"margin": "20px 0"}),
                     html.H5("Hidden Projects", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
                     html.Div(id="hidden-projects-list"),
                     html.Div([
@@ -397,8 +651,9 @@ app.layout = html.Div(
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="data-store"),
         dcc.Store(id="settings-inputs-store"),   # holds current settings field values
-        dcc.Store(id="hidden-store"),            # holds hidden projects list
-        dcc.Store(id="col-vis-store", storage_type="local"),  # persists column visibility across reloads
+        dcc.Store(id="hidden-store", data=load_hidden_projects()),  # holds hidden projects list
+        dcc.Store(id="modal-raw-store"),         # raw timeseries for open project
+        dcc.Store(id="usage-granularity", data="monthly"),  # granularity toggle state
 
         # Layout: sidebar + main
         html.Div(
@@ -431,6 +686,26 @@ app.layout = html.Div(
                             ],
                         ),
                     ],
+                ),
+            ],
+        ),
+
+        # Solution detail modal
+        dbc.Modal(
+            id="solution-modal",
+            size="xl",
+            is_open=False,
+            scrollable=True,
+            children=[
+                dbc.ModalHeader(
+                    html.Div(id="solution-modal-title"),
+                    close_button=True,
+                    style={"background": "#f0fafb"},
+                ),
+                dcc.Loading(
+                    dbc.ModalBody(id="solution-modal-body", style={"padding": "24px"}),
+                    color=BRAND, type="circle",
+                    style={"minHeight": "200px"},
                 ),
             ],
         ),
@@ -485,6 +760,27 @@ app.index_string = """<!DOCTYPE html>
 """
 
 
+def _apply_tag_filter(df, selected_tags, logic="or"):
+    """Filter df by tag columns. logic='or' matches any tag; logic='and' requires all tags."""
+    if not selected_tags:
+        return df
+    if isinstance(selected_tags, str):
+        selected_tags = [selected_tags]
+    if logic == "and":
+        mask = pd.Series(True, index=df.index)
+        for tag in selected_tags:
+            col = STATUS_TAGS.get(tag)
+            if col and col in df.columns:
+                mask &= df[col].fillna(False).astype(bool)
+    else:
+        mask = pd.Series(False, index=df.index)
+        for tag in selected_tags:
+            col = STATUS_TAGS.get(tag)
+            if col and col in df.columns:
+                mask |= df[col].fillna(False).astype(bool)
+    return df[mask]
+
+
 # ===========================================================================
 # CALLBACKS
 # ===========================================================================
@@ -505,49 +801,55 @@ def load_or_refresh_data(_n):
 # ---------------------------------------------------------------------------
 # 2. Populate sidebar filter dropdowns from loaded data
 # ---------------------------------------------------------------------------
+# Maps tag label → boolean column name in df
+STATUS_TAGS = {
+    # Activity
+    "Active":           "tag_active",
+    "No Recent Usage":  "tag_no_recent",
+    "Inactive":         "tag_inactive",
+    # ROI / financial
+    "ROI Reached":      "tag_roi_reached",
+    "Usage Dropped":    "tag_usage_dropped",
+    "Above Mo. Target":     "tag_above_target",
+    "Below Mo. Target":     "tag_below_target",
+    "No Target":        "tag_no_target",
+    "No Config":        "tag_no_config",
+}
+
+ACTIVITY_TAG_ORDER = ["Active", "No Recent Usage", "Inactive"]
+ROI_TAG_ORDER      = ["ROI Reached", "Above Mo. Target", "Below Mo. Target", "Usage Dropped", "No Target", "No Config"]
+
+
 @app.callback(
     Output("filter-client", "options"),
     Output("filter-project", "options"),
-    Output("filter-status", "options"),
+    Output("filter-activity", "options"),
+    Output("filter-roi-status", "options"),
     Input("data-store", "data"),
 )
 def update_filter_options(store_data):
     df = df_from_store(store_data)
     if df.empty:
         empty = [{"label": "All", "value": "All"}]
-        return empty, empty, empty
+        return empty, empty, empty, empty
 
     clients = ["All"] + sorted(df["CLIENT"].dropna().unique().tolist())
     projects = ["All"] + sorted(df["PROJECT"].dropna().unique().tolist())
-    statuses = ["All"] + sorted(df["roi_status"].dropna().unique().tolist())
+
+    # Only show tags that are present in the data
+    activity_opts = [{"label": t, "value": t} for t in ACTIVITY_TAG_ORDER
+                     if STATUS_TAGS[t] in df.columns and df[STATUS_TAGS[t]].any()]
+    roi_opts      = [{"label": t, "value": t} for t in ROI_TAG_ORDER
+                     if STATUS_TAGS[t] in df.columns and df[STATUS_TAGS[t]].any()]
 
     return (
         [{"label": c, "value": c} for c in clients],
         [{"label": p, "value": p} for p in projects],
-        [{"label": s, "value": s} for s in statuses],
+        activity_opts,
+        roi_opts,
     )
 
 
-# ---------------------------------------------------------------------------
-# Column visibility persistence
-# ---------------------------------------------------------------------------
-ALL_COLS = ["Project", "Activated", "1 mo", "MoM %", "3 mo", "12 mo", "Hours Saved", "Investment", "Total Saved", "ROI %"]
-
-@app.callback(
-    Output("col-vis-store", "data"),
-    Input("column-visibility", "value"),
-    prevent_initial_call=True,
-)
-def save_col_visibility(value):
-    return value
-
-@app.callback(
-    Output("column-visibility", "value"),
-    Input("url", "pathname"),
-    State("col-vis-store", "data"),
-)
-def load_col_visibility(_, stored):
-    return stored if stored is not None else ALL_COLS
 
 
 # ---------------------------------------------------------------------------
@@ -556,57 +858,37 @@ def load_col_visibility(_, stored):
 @app.callback(
     Output("client-accordion-container", "children"),
     Input("data-store", "data"),
+    Input("hidden-store", "data"),
     Input("filter-client", "value"),
     Input("filter-project", "value"),
-    Input("filter-status", "value"),
-    Input("column-visibility", "value"),
+    Input("filter-activity", "value"),
+    Input("filter-roi-status", "value"),
 )
-def update_table(store_data, client_filter, project_filter, status_filter, visible_cols):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter):
     df = df_from_store(store_data)
     if df.empty:
         return []
+
+    hidden = hidden_store or load_hidden_projects()
+    if hidden:
+        df = df[~df["PROJECT"].isin(hidden)]
 
     if client_filter and client_filter != "All":
         df = df[df["CLIENT"] == client_filter]
     if project_filter and project_filter != "All":
         df = df[df["PROJECT"] == project_filter]
-    if status_filter and status_filter != "All":
-        df = df[df["roi_status"] == status_filter]
+    df = _apply_tag_filter(df, activity_filter, logic="and")
+    df = _apply_tag_filter(df, roi_filter, logic="and")
 
-    col_defs, all_rows = build_grid_data(df)
-    visible_set = set(visible_cols or [])
-    col_defs_no_client = [
-        c for c in col_defs
-        if c["field"] != "Client" and c["field"] in visible_set
-    ]
+    _, all_rows = build_grid_data(df)
 
-    ROW_H, HEADER_H = 42, 48
     accordion_items = []
     for client in df["CLIENT"].unique():
         client_rows = [r for r in all_rows if r.get("Client") == client]
-        grid_height = max(120, len(client_rows) * ROW_H + HEADER_H)
-        grid = dag.AgGrid(
-            id={"type": "client-grid", "index": client},
-            rowData=client_rows,
-            columnDefs=col_defs_no_client,
-            defaultColDef={
-                "resizable": True,
-                "suppressMovable": False,
-                "suppressMenu": True,
-                "cellStyle": {"fontSize": "13px"},
-            },
-            dashGridOptions={
-                "rowSelection": "single",
-                "animateRows": True,
-                "suppressCellFocus": True,
-            },
-            style={"height": f"{grid_height}px", "width": "100%"},
-            className="ag-theme-alpine",
-        )
-
+        table = build_client_table(client_rows)
         accordion_items.append(
             dbc.AccordionItem(
-                grid,
+                html.Div(table, style={"overflowX": "auto"}),
                 title=client,
                 item_id=f"client-{client}",
             )
@@ -626,155 +908,430 @@ def update_table(store_data, client_filter, project_filter, status_filter, visib
 # ---------------------------------------------------------------------------
 @app.callback(
     Output("metric-total-solutions", "children"),
-    Output("metric-hours-saved", "children"),
-    Output("metric-total-savings", "children"),
-    Output("metric-total-investment", "children"),
+    Output("metric-active-projects", "children"),
     Output("metric-roi-reached", "children"),
     Input("data-store", "data"),
+    Input("hidden-store", "data"),
     Input("filter-client", "value"),
     Input("filter-project", "value"),
-    Input("filter-status", "value"),
+    Input("filter-activity", "value"),
+    Input("filter-roi-status", "value"),
 )
-def update_metrics(store_data, client_filter, project_filter, status_filter):
+def update_metrics(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter):
     df = df_from_store(store_data)
     if df.empty:
-        return "—", "—", "—", "—", "—"
+        return "—", "—", "—"
 
+    hidden = hidden_store or load_hidden_projects()
+    if hidden:
+        df = df[~df["PROJECT"].isin(hidden)]
+
+    # Client/project filters scope the portfolio; activity + ROI filters are drill-downs.
+    # Metric cards reflect the full client/project scope regardless of drill-down filters.
     if client_filter and client_filter != "All":
         df = df[df["CLIENT"] == client_filter]
     if project_filter and project_filter != "All":
         df = df[df["PROJECT"] == project_filter]
-    if status_filter and status_filter != "All":
-        df = df[df["roi_status"] == status_filter]
+    _ = activity_filter  # intentionally not applied to metrics
+    _ = roi_filter
 
     total_solutions = len(df)
-
-    hours_saved = df["time_saved_hours_12mo"].sum() if "time_saved_hours_12mo" in df.columns else 0
-    total_savings = df["cost_saved_12mo"].sum() if "cost_saved_12mo" in df.columns else 0
+    active_projects = int(df["tag_active"].fillna(False).sum()) if "tag_active" in df.columns else 0
 
     primary_df = df[df["_split_primary"] == True] if "_split_primary" in df.columns else df
-    total_investment = primary_df["project_cost"].sum() if "project_cost" in primary_df.columns else 0
-    roi_reached = int(primary_df["roi_reached"].sum()) if "roi_reached" in primary_df.columns else 0
+    roi_reached = int(primary_df["tag_roi_reached"].fillna(False).sum()) if "tag_roi_reached" in primary_df.columns else 0
 
     return (
         str(total_solutions),
-        fmt_hours(hours_saved),
-        fmt_currency(total_savings),
-        fmt_currency(total_investment),
-        f"{roi_reached}",
+        f"{active_projects} / {total_solutions}",
+        str(roi_reached),
     )
 
 
 # ---------------------------------------------------------------------------
-# 5. Solution details panel on row selection
+# 5. Solution detail modal on row selection
 # ---------------------------------------------------------------------------
+
+def _fetch_project_timeseries(client, project, project_group):
+    """Fetch raw daily records for the project from Supabase. Returns store dict or None."""
+    from modules.data_loader import _fetch_all_rows
+    proj_cfg = None
+    for company_name, company_config in COMPANY_CONFIGS.items():
+        if company_config.get('client_name', company_name) == client:
+            proj_cfg = company_config['projects'].get(project_group)
+            if proj_cfg:
+                break
+    if not proj_cfg:
+        return None
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        rows = _fetch_all_rows(supabase, proj_cfg['supabase_table'])
+        if not rows:
+            return None
+        raw = pd.DataFrame(rows)
+
+        # Date column
+        date_col = next((c for c in ['date', 'processed_date', 'created_at'] if c in raw.columns), None)
+        if not date_col:
+            return None
+        raw[date_col] = pd.to_datetime(raw[date_col], errors='coerce')
+        raw = raw[raw[date_col].notna()]
+
+        # Filter split projects to the specific sub-value
+        split_field = proj_cfg.get('split_by_field')
+        if split_field and split_field in raw.columns:
+            raw = raw[raw[split_field] == project]
+
+        # Compute a numeric "usage" column per row
+        usage_field  = proj_cfg['usage_field']
+        value_type   = proj_cfg.get('value_type', 'boolean')
+        match_value  = proj_cfg.get('match_value')
+        if usage_field not in raw.columns:
+            return None
+        if value_type == 'match':
+            raw['_u'] = (raw[usage_field] == match_value).astype(int)
+        elif value_type == 'boolean':
+            raw['_u'] = ((raw[usage_field] == True) | (raw[usage_field] == 'True') | (raw[usage_field] == 1)).astype(int)
+        else:
+            raw['_u'] = pd.to_numeric(raw[usage_field], errors='coerce').fillna(0)
+
+        raw['_date'] = raw[date_col].dt.date.astype(str)
+        daily = raw.groupby('_date')['_u'].sum().reset_index()
+        daily.columns = ['date', 'count']
+        daily = daily.sort_values('date')
+
+        return {'daily': daily.to_dict('records')}
+    except Exception as e:
+        print(f"Timeseries fetch error: {e}")
+        return None
+
+
 @app.callback(
-    Output("solution-details", "children"),
-    Input({"type": "client-grid", "index": dash.ALL}, "selectedRows"),
+    Output("solution-modal", "is_open"),
+    Output("solution-modal-title", "children"),
+    Output("solution-modal-body", "children"),
+    Output("modal-raw-store", "data"),
+    Input({"type": "row-details-btn", "index": dash.ALL}, "n_clicks"),
     State("data-store", "data"),
+    prevent_initial_call=True,
 )
-def show_solution_details(all_selected_rows, store_data):
-    selected_rows = next((sr for sr in all_selected_rows if sr), None)
-    if not selected_rows:
-        return html.Div(
-            "Click a row to see solution details.",
-            style={"color": "#999", "fontStyle": "italic", "textAlign": "center", "padding": "32px"},
+def show_solution_modal(all_n_clicks, store_data):
+    import traceback
+    try:
+        return _show_solution_modal_inner(all_n_clicks, store_data)
+    except Exception:
+        traceback.print_exc()
+        return False, "", "", None
+
+
+def _show_solution_modal_inner(all_n_clicks, store_data):
+    triggered = ctx.triggered_id
+    if not triggered or not any(n for n in (all_n_clicks or []) if n):
+        return False, "", "", no_update
+
+    project_key = triggered["index"]
+    client, project = project_key.split("___", 1)
+
+    df = df_from_store(store_data)
+    if df.empty:
+        return False, "", "", None
+
+    mask = (df["CLIENT"] == client) & (df["PROJECT"] == project)
+    matching_df = df[mask]
+    if matching_df.empty:
+        return False, "", "", None
+
+    _, all_rows = build_grid_data(matching_df)
+    if not all_rows:
+        return False, "", "", None
+
+    row = all_rows[0]
+    project_group = row.get("_project_group", project)
+
+    # --- Fetch raw timeseries + build monthly savings for the store ---
+    raw_store = _fetch_project_timeseries(client, project, project_group) or {}
+    minutes_saved = float(matching_df.iloc[0].get("Minutes Saved per usage") or 0)
+    hourly_rate   = float(matching_df.iloc[0].get("Client Hourly Rate") or 0)
+    raw_store['minutes_saved'] = minutes_saved
+    raw_store['hourly_rate']   = hourly_rate
+    # Monthly savings from stored monthly usage × rates (key = "Janvier 2025" etc.)
+    now = pd.Timestamp.now()
+    current_month_idx = now.month - 1
+    monthly_savings = {}
+    for i in range(11, -1, -1):
+        idx  = (current_month_idx - i) % 12
+        year = now.year if idx <= current_month_idx else now.year - 1
+        mname = MONTHS_FR[idx]
+        usage = float(matching_df.iloc[0].get(mname, 0) or 0)
+        monthly_savings[f"{mname} {year}"] = round(usage * minutes_saved / 60 * hourly_rate, 2)
+    raw_store['monthly_savings'] = monthly_savings
+
+    roi_status      = row.get("_roi_status", "")
+    activity_status = row.get("_activity_status", "")
+
+    def _modal_chip(label, color_map):
+        bg, fg = color_map.get(label, ("#e2e3e5", "#383d41"))
+        return html.Span(label, style={
+            "marginLeft": "8px", "fontSize": "11px", "fontWeight": "700",
+            "background": bg, "color": fg,
+            "padding": "3px 10px", "borderRadius": "12px", "verticalAlign": "middle",
+        })
+
+    title = html.Div([
+        html.Span(f"{client}  —  {project}", style={"fontWeight": "700", "fontSize": "17px", "color": DARK}),
+        _modal_chip(activity_status, ACTIVITY_CHIP),
+        _modal_chip(roi_status, ROI_CHIP),
+    ])
+
+    def _pill(label, value, accent=False):
+        return html.Div([
+            html.P(label, style={"fontSize": "11px", "color": "#888", "marginBottom": "4px",
+                                  "fontWeight": "600", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+            html.P(str(value), style={"fontWeight": "700", "color": BRAND if accent else DARK,
+                                       "fontSize": "22px", "marginBottom": 0}),
+        ], style={"background": "white", "borderRadius": "10px", "padding": "14px 16px",
+                  "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "height": "100%"})
+
+    def _chart_card(graph_id, height=240):
+        return dbc.Card(
+            dbc.CardBody(dcc.Loading(
+                dcc.Graph(id=graph_id, config={"displayModeBar": False},
+                          style={"height": f"{height}px"}),
+                color=BRAND, type="circle",
+                overlay_style={"visibility": "visible", "opacity": 0.4},
+            )),
+            style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)",
+                   "borderRadius": "10px", "marginTop": "8px"},
         )
 
-    row = selected_rows[0]
-    df = df_from_store(store_data)
-
-    # Find matching row in full df for chart data
-    client = row.get("_client", row.get("Client", ""))
-    project = row.get("Project", "")
-    matching = df[(df["CLIENT"] == client) & (df["PROJECT"] == project)] if not df.empty else pd.DataFrame()
-
-    # --- Metric pills ---
-    pills = dbc.Row([
-        dbc.Col(_detail_pill("Usage (1mo)", row.get("_usage_1mo", "—")), xs=6, sm=4, md=2),
-        dbc.Col(_detail_pill("MoM %", row.get("_mom_pct", "—")), xs=6, sm=4, md=2),
-        dbc.Col(_detail_pill("Hours Saved", row.get("_hours_saved", "—")), xs=6, sm=4, md=2),
-        dbc.Col(_detail_pill("Total Saved", row.get("_total_saved", "—")), xs=6, sm=4, md=2),
-        dbc.Col(_detail_pill("ROI %", row.get("_roi_pct", "—")), xs=6, sm=4, md=2),
-        dbc.Col(_detail_pill("Status", row.get("_roi_status", "—")), xs=6, sm=4, md=2),
-    ], className="mb-3")
-
-    # --- Monthly usage trend chart ---
-    chart = _build_trend_chart(matching)
-
-    # --- ROI progress bar ---
-    roi_bar = _build_roi_bar(row)
-
-    # --- Break-even estimate ---
-    breakeven = row.get("_breakeven", "")
-    breakeven_div = html.P(
-        f"Break-even estimate: {breakeven}" if breakeven else "",
-        style={"fontSize": "13px", "color": "#555", "marginTop": "8px"},
+    granularity_toggle = html.Div(
+        html.Div(id="granularity-toggle-container", children=make_granularity_toggle("monthly")),
+        style={"textAlign": "right", "marginBottom": "8px"},
     )
 
-    title = f"{client} — {project}"
-    panel = dbc.Card([
-        dbc.CardHeader(
-            html.H6(title, style={"margin": 0, "color": BRAND, "fontWeight": "700"}),
-            style={"background": "#f0fafb"},
-        ),
-        dbc.CardBody([
-            pills,
-            html.Hr(),
-            dbc.Row([
-                dbc.Col(chart, md=8),
-                dbc.Col([roi_bar, breakeven_div], md=4),
-            ]),
-        ]),
-    ], style={"borderTop": f"3px solid {BRAND}", "boxShadow": "0 2px 8px rgba(0,0,0,0.08)"})
+    roi_bar  = _build_roi_bar(row)
+    breakeven = row.get("_breakeven", "")
 
-    return panel
+    # --- YTD calculations ---
+    current_month_idx = pd.Timestamp.now().month - 1  # 0-based
+    ytd_months = MONTHS_FR[:current_month_idx + 1]
+    row_data = matching_df.iloc[0]
+    ytd_usage = int(sum(float(row_data.get(m, 0) or 0) for m in ytd_months))
+    ytd_savings = ytd_usage * minutes_saved / 60 * hourly_rate
+
+    # --- Tab 1: Usage ---
+    tab_usage = dbc.Tab(label="Usage", tab_id="tab-usage", children=html.Div([
+        dbc.Row([
+            dbc.Col(_pill("This Month", row.get("_usage_1mo",  "—"), accent=True), xs=6, md=True, className="mb-3"),
+            dbc.Col(_pill("MoM %",      row.get("_mom_pct",    "—"), accent=True), xs=6, md=True, className="mb-3"),
+            dbc.Col(_pill("3 Months",   row.get("_usage_3mo",  "—")), xs=6, md=True, className="mb-3"),
+            dbc.Col(_pill("YTD",        f"{ytd_usage} usages"), xs=6, md=True, className="mb-3"),
+            dbc.Col(_pill("12 Months",  row.get("_usage_12mo", "—")), xs=6, md=True, className="mb-3"),
+        ], className="mb-3"),
+        granularity_toggle,
+        _chart_card("usage-trend-graph", height=260),
+    ], style={"padding": "20px 4px 4px 4px"}))
+
+    # --- Tab 2: ROI & Financials ---
+    tab_roi = dbc.Tab(label="ROI & Financials", tab_id="tab-roi", children=html.Div([
+        dbc.Row([
+            dbc.Col(_pill("Investment",   row.get("_investment",    "—")),              xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("Total Saved",  row.get("_total_saved",   "—")),              xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("YTD Savings",  fmt_currency(ytd_savings) if ytd_savings else "—"), xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("ROI %",        row.get("_roi_pct",       "—"), accent=True), xs=6, md=3, className="mb-3"),
+        ], className="mb-2"),
+        dbc.Row([
+            dbc.Col(_pill("Mo Target",    row.get("_mo_target",     "—")),              xs=6, md=4, className="mb-3"),
+            dbc.Col(_pill("Saved This Mo",row.get("_saved_this_mo", "—")),              xs=6, md=4, className="mb-3"),
+            dbc.Col(_pill("Mo ROI %",     row.get("Mo ROI %",       "—"), accent=True), xs=6, md=4, className="mb-3"),
+        ], className="mb-2"),
+        dbc.Row([
+            dbc.Col(dbc.Card(dbc.CardBody(roi_bar),
+                             style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}), md=8),
+            dbc.Col(html.Div([
+                html.P("Break-even", style={"fontSize": "11px", "color": "#888", "marginBottom": "4px",
+                                            "fontWeight": "600", "textTransform": "uppercase", "letterSpacing": "0.5px"}),
+                html.P(breakeven or "—", style={"fontWeight": "600", "color": DARK, "fontSize": "14px", "marginBottom": 0}),
+            ], style={"background": "white", "borderRadius": "10px", "padding": "14px 16px",
+                      "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "height": "100%"}), md=4),
+        ], className="mb-1"),
+        _chart_card("savings-trend-graph", height=220),
+    ], style={"padding": "20px 4px 4px 4px"}))
+
+    # --- Tab 3: Hours Saved ---
+    hrs_this_mo_raw = row.get("_hrs_this_mo", "—")
+    hrs_prev_mo_raw = row.get("_hrs_prev_mo", "—")
+    hrs_12mo_raw    = row.get("_hrs_12mo",    "—")
+
+    def _parse_hrs(s):
+        try: return float(str(s).replace("h", "").strip())
+        except: return 0
+
+    h1 = _parse_hrs(hrs_this_mo_raw)
+    hp = _parse_hrs(hrs_prev_mo_raw)
+    bar_fig = go.Figure()
+    bar_fig.add_trace(go.Bar(
+        x=["Last Month", "This Month"], y=[hp, h1],
+        marker_color=["#80e0e6", BRAND],
+        text=[hrs_prev_mo_raw, hrs_this_mo_raw],
+        textposition="outside", cliponaxis=False,
+        textfont={"size": 13, "color": DARK},
+    ))
+    bar_fig.update_layout(
+        margin={"l": 20, "r": 20, "t": 40, "b": 20},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
+               "range": [0, max(h1, hp, 0.1) * 1.35]},
+        xaxis={"showgrid": False}, height=220, showlegend=False,
+    )
+    tab_hours = dbc.Tab(label="Hours Saved", tab_id="tab-hours", children=html.Div([
+        dbc.Row([
+            dbc.Col(_pill("This Month", hrs_this_mo_raw, accent=True), xs=6, md=4, className="mb-3"),
+            dbc.Col(_pill("Last Month", hrs_prev_mo_raw),               xs=6, md=4, className="mb-3"),
+            dbc.Col(_pill("12 Months",  hrs_12mo_raw),                  xs=6, md=4, className="mb-3"),
+        ], className="mb-2"),
+        dbc.Card(dbc.CardBody(dcc.Graph(figure=bar_fig, config={"displayModeBar": False})),
+                 style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
+    ], style={"padding": "20px 4px 4px 4px"}))
+
+    body = dbc.Tabs(
+        [tab_usage, tab_roi, tab_hours],
+        active_tab="tab-usage",
+        style={"borderBottom": f"2px solid {BRAND}"},
+    )
+
+    return True, title, body, raw_store
 
 
-def _detail_pill(label, value):
-    return html.Div([
-        html.P(label, style={"fontSize": "11px", "color": "#888", "marginBottom": "2px", "fontWeight": "600", "textTransform": "uppercase"}),
-        html.P(str(value), style={"fontWeight": "700", "color": DARK, "fontSize": "15px", "marginBottom": 0}),
-    ], style={"background": "#f0fafb", "borderRadius": "8px", "padding": "10px 12px", "marginBottom": "8px"})
+# ---------------------------------------------------------------------------
+# 5a-i. Granularity button clicks → update store + re-render toggle
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("usage-granularity", "data"),
+    Input({"type": "gran-btn", "index": dash.ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def update_granularity(n_clicks):
+    triggered = ctx.triggered_id
+    if triggered and any(n for n in (n_clicks or []) if n):
+        return triggered["index"]
+    return no_update
 
 
-def _build_trend_chart(matching_df):
-    """Build a 12-month usage trend line chart."""
-    current_month_idx = pd.Timestamp.now().month - 1
-    months_ordered = []
-    for i in range(11, -1, -1):
-        idx = (current_month_idx - i) % 12
-        months_ordered.append(MONTHS_FR[idx])
+@app.callback(
+    Output("granularity-toggle-container", "children"),
+    Input("usage-granularity", "data"),
+    prevent_initial_call=False,
+)
+def render_granularity_toggle(selected):
+    return make_granularity_toggle(selected or "monthly")
 
-    if matching_df.empty:
-        values = [0] * 12
-    else:
-        row_data = matching_df.iloc[0]
-        values = [int(row_data.get(m, 0) or 0) for m in months_ordered]
+
+# ---------------------------------------------------------------------------
+# 5a. Usage trend chart — reacts to granularity toggle
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("usage-trend-graph", "figure"),
+    Input("modal-raw-store", "data"),
+    Input("usage-granularity", "data"),
+    prevent_initial_call=True,
+)
+def render_usage_trend(raw_data, granularity="monthly"):
+    empty = go.Figure()
+    empty.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        xaxis={"visible": False}, yaxis={"visible": False}, height=260)
+    if not raw_data:
+        return empty
+
+    daily_records = raw_data.get("daily", [])
+    if not daily_records:
+        # Fallback: empty chart with message
+        return empty
+
+    df = pd.DataFrame(daily_records)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+
+    if granularity == "daily":
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=90)
+        df = df[df["date"] >= cutoff]
+        x = df["date"].dt.strftime("%b %d, %Y")
+        y = df["count"]
+        mode = "lines+markers"
+    elif granularity == "weekly":
+        df["period"] = df["date"].dt.to_period("W").dt.start_time
+        df = df.groupby("period")["count"].sum().reset_index()
+        # Label = "Week of Jun 23, 2025" (Monday start)
+        x = df["period"].dt.strftime("w/o %b %d, %Y")
+        y = df["count"]
+        mode = "lines+markers"
+    else:  # monthly
+        df["period"] = df["date"].dt.to_period("M").dt.start_time
+        df = df.groupby("period")["count"].sum().reset_index()
+        cutoff = pd.Timestamp.now() - pd.DateOffset(months=13)
+        df = df[df["period"] >= cutoff]
+        x = df["period"].dt.strftime("%b %Y")
+        y = df["count"]
+        mode = "lines+markers"
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=months_ordered,
-        y=values,
-        mode="lines+markers",
+        x=x, y=y, mode=mode,
         line={"color": BRAND, "width": 2.5},
-        marker={"color": BRAND, "size": 7},
-        fill="tozeroy",
-        fillcolor=f"rgba(0,196,206,0.12)",
-        name="Usage",
+        marker={"color": BRAND, "size": 6},
+        fill="tozeroy", fillcolor="rgba(0,196,206,0.12)",
     ))
     fig.update_layout(
-        margin={"l": 20, "r": 20, "t": 30, "b": 20},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        title={"text": "Monthly Usage (12 months)", "font": {"size": 13, "color": DARK}, "x": 0.02},
-        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False},
+        margin={"l": 20, "r": 20, "t": 10, "b": 30},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False, "rangemode": "tozero"},
         xaxis={"showgrid": False, "tickfont": {"size": 10}},
-        height=220,
-        showlegend=False,
+        height=260, showlegend=False,
     )
+    return fig
 
-    return dcc.Graph(figure=fig, config={"displayModeBar": False})
+
+# ---------------------------------------------------------------------------
+# 5b. Monthly savings trend chart
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("savings-trend-graph", "figure"),
+    Input("modal-raw-store", "data"),
+    prevent_initial_call=True,
+)
+def render_savings_trend(raw_data):
+    empty = go.Figure()
+    empty.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        xaxis={"visible": False}, yaxis={"visible": False}, height=220)
+    if not raw_data:
+        return empty
+
+    monthly_savings = raw_data.get("monthly_savings", {})
+    if not monthly_savings or all(v == 0 for v in monthly_savings.values()):
+        return empty
+
+    labels = list(monthly_savings.keys())
+    values = [monthly_savings[k] for k in labels]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=labels, y=values,
+        marker_color=[BRAND if v == max(values) else "#80e0e6" for v in values],
+        text=[fmt_currency(v) if v else "" for v in values],
+        textposition="outside", cliponaxis=False,
+        textfont={"size": 10, "color": DARK},
+    ))
+    fig.update_layout(
+        title={"text": "Monthly Savings (12 mo)", "font": {"size": 12, "color": "#888"}, "x": 0.01},
+        margin={"l": 20, "r": 20, "t": 36, "b": 20},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
+               "tickprefix": "$", "rangemode": "tozero",
+               "range": [0, max(values, default=1) * 1.35]},
+        xaxis={"showgrid": False, "tickfont": {"size": 10}},
+        height=220, showlegend=False,
+    )
+    return fig
 
 
 def _build_roi_bar(row):
@@ -783,7 +1340,7 @@ def _build_roi_bar(row):
     if roi_pct_raw is None or (isinstance(roi_pct_raw, float) and math.isnan(roi_pct_raw)):
         return html.Div("ROI data not available", style={"color": "#999", "fontSize": "13px"})
 
-    clamped = max(0, min(100, roi_pct_raw + 100))   # -100% → 0, 0% → 100
+    clamped = max(0, min(100, roi_pct_raw))
     pct_display = f"{roi_pct_raw:.0f}%"
 
     bar = html.Div([
@@ -1014,6 +1571,7 @@ def render_hidden_projects(store_data, _status_trigger):
 
 @app.callback(
     Output("hide-project-status", "children"),
+    Output("hidden-store", "data"),
     Input("btn-hide-project", "n_clicks"),
     Input({"type": "btn-unhide", "project": dash.ALL}, "n_clicks"),
     State("hide-project-dropdown", "value"),
@@ -1021,23 +1579,25 @@ def render_hidden_projects(store_data, _status_trigger):
 )
 def manage_hidden_projects(hide_clicks, unhide_clicks, project_to_hide):
     triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
 
-    hidden = load_hidden_projects()
+    # Ignore spurious fires from newly rendered pattern-matched buttons
+    if not triggered_value:
+        return no_update, no_update
 
     if isinstance(triggered, dict) and triggered.get("type") == "btn-unhide":
         proj = triggered["project"]
-        if proj in hidden:
-            hidden.remove(proj)
-            save_hidden_projects(hidden)
-            return dbc.Alert(f"'{proj}' unhidden.", color="success", duration=3000)
+        unhide_project(proj)
+        hidden = load_hidden_projects()
+        return dbc.Alert(f"'{proj}' unhidden.", color="success", duration=3000), hidden
 
     if triggered == "btn-hide-project":
-        if project_to_hide and project_to_hide not in hidden:
-            hidden.append(project_to_hide)
-            save_hidden_projects(hidden)
-            return dbc.Alert(f"'{project_to_hide}' hidden.", color="warning", duration=3000)
+        if project_to_hide:
+            hide_project(project_to_hide)
+            hidden = load_hidden_projects()
+            return dbc.Alert(f"'{project_to_hide}' hidden.", color="warning", duration=3000), hidden
 
-    return no_update
+    return no_update, no_update
 
 
 # ===========================================================================

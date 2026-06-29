@@ -255,46 +255,41 @@ def calculate_metrics(df):
     df['roi_progress_percent'] = df['cumulative_cost_saved'] / project_cost.replace(0, np.nan) * 100
 
     monthly_target = df['Monthly ROI Goal'].fillna(0)
+    df['mo_roi_pct'] = df['cost_saved_this_month'] / monthly_target.replace(0, np.nan) * 100
 
-    def get_status(row):
-        if row['project_cost'] == 0 or monthly_target[row.name] == 0:
-            if row['usage_this_month'] == 0 and row['usage_last_3_months'] == 0:
-                return 'Inactive'
-            elif row['usage_this_month'] == 0:
-                return 'No Recent Usage'
-            elif row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
-                return 'Usage Dropped'
-            return 'Active (Config Needed)'
-        if row['usage_drop_percent'] > 50 and row['historical_monthly_avg'] > 5:
-            return 'Usage Dropped'
-        elif row['usage_this_month'] == 0 and row['usage_last_3_months'] == 0:
-            return 'Inactive'
-        elif row['usage_this_month'] == 0:
-            return 'No Recent Usage'
-        elif row['roi_reached']:
-            return 'ROI Reached'
-        elif row['cost_saved_this_month'] >= monthly_target[row.name]:
-            return 'Above Target'
-        elif row['cost_saved_this_month'] >= monthly_target[row.name] * 0.7:
-            return 'On Track'
-        return 'Below Target'
+    # --- Activity flags (mutually exclusive, based purely on usage) ---
+    df['tag_active']         = df['usage_this_month'] > 0
+    df['tag_no_recent']      = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] > 0)
+    df['tag_inactive']       = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] == 0)
 
-    df['roi_status'] = df.apply(get_status, axis=1)
+    # --- ROI / financial flags (NOT mutually exclusive) ---
+    has_investment   = project_cost > 0
+    has_target       = monthly_target > 0
+    df['tag_no_config']      = ~has_investment
+    df['tag_roi_reached']    = df['roi_reached']
+    df['tag_usage_dropped']  = (df['usage_drop_percent'] > 50) & (df['historical_monthly_avg'] > 5)
+    df['tag_above_target']   = has_investment & has_target & (df['cost_saved_this_month'] >= monthly_target)
+    df['tag_below_target']   = has_investment & has_target & (df['cost_saved_this_month'] < monthly_target)
+    df['tag_no_target']      = has_investment & ~has_target & ~df['roi_reached']
 
-    def get_status_color(status):
-        if 'Dropped' in status or 'Inactive' in status:
-            return 'darkred'
-        elif 'No Recent' in status:
-            return 'orange'
-        elif 'ROI Reached' in status or 'Above Target' in status:
-            return 'green'
-        elif 'On Track' in status:
-            return 'orange'
-        elif 'Below Target' in status:
-            return 'red'
-        return 'gray'
+    # Keep single-value columns for display purposes (left border, modal badge)
+    def _activity_status(row):
+        if row['tag_active']:    return 'Active'
+        if row['tag_no_recent']: return 'No Recent Usage'
+        return 'Inactive'
 
-    df['status_color'] = df['roi_status'].apply(get_status_color)
+    def _roi_status(row):
+        if row['tag_no_config']:   return 'No Config'
+        if row['tag_roi_reached']: return 'ROI Reached'
+        if row['tag_usage_dropped'] and row['tag_below_target']: return 'Usage Dropped + Below Mo. Target'
+        if row['tag_usage_dropped']: return 'Usage Dropped'
+        if row['tag_above_target']:  return 'Above Mo. Target'
+        if row['tag_below_target']:  return 'Below Mo. Target'
+        if row['tag_no_target']:     return 'No Target'
+        return '—'
+
+    df['activity_status'] = df.apply(_activity_status, axis=1)
+    df['roi_status']      = df.apply(_roi_status, axis=1)
 
     def estimate_breakeven(row):
         if row['roi_reached']:

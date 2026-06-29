@@ -133,7 +133,19 @@ def remove_subscriber(email):
         return True, "Unsubscribed successfully!"
     return False, "Email not found"
 
-ALERT_STATUSES = {"Usage Dropped", "No Recent Usage"}
+ROI_ALERT_STATUSES      = {"Usage Dropped"}
+ACTIVITY_ALERT_STATUSES = {"No Recent Usage"}
+
+
+def _get_alert_type(row):
+    """Return the alert type for a row, or None if no alert needed."""
+    roi      = row.get('roi_status', '')
+    activity = row.get('activity_status', '')
+    if roi in ROI_ALERT_STATUSES:
+        return roi
+    if activity in ACTIVITY_ALERT_STATUSES:
+        return activity
+    return None
 
 
 def _build_alert_email(row, status, dashboard_url):
@@ -197,9 +209,9 @@ def check_and_send_alerts(df, smtp_config, alert_config):
 
     for _, row in df.iterrows():
         project_key = f"{row['COMPANY']}_{row['PROJECT']}"
-        status = row.get('roi_status', '')
+        status = _get_alert_type(row)
 
-        if status not in ALERT_STATUSES:
+        if status is None:
             alerts_skipped.append({'project': project_key, 'reason': f'Status OK: {status}'})
             continue
 
