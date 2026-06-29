@@ -105,14 +105,38 @@ def df_from_store(store_data):
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
+def _isna(val):
+    """True if val is None or any flavour of NaN/inf that pandas may produce."""
+    if val is None:
+        return True
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return True
+    return False
+
+
+def _safe_num(val, default=0):
+    """Return a plain float, coercing None/NaN/non-numeric to *default*.
+
+    Pandas cells can arrive as float NaN (which is truthy!), numpy scalars,
+    or plain Python numbers.  Always use this instead of ``val or default``
+    when the value comes from a DataFrame row.
+    """
+    if _isna(val):
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def fmt_currency(val):
-    if val is None or (isinstance(val, float) and math.isnan(val)):
+    if _isna(val):
         return ""
     return f"${val:,.0f}"
 
 
 def fmt_hours(val):
-    if val is None or (isinstance(val, float) and math.isnan(val)):
+    if _isna(val):
         return ""
     return f"{val:.1f}h"
 
@@ -122,7 +146,7 @@ def fmt_mom(curr, prev, month_activated=None):
         return "–"
     if prev == 0 and curr > 0:
         # Only label "New" if the project was activated within the last 2 months
-        if month_activated and isinstance(month_activated, str):
+        if isinstance(month_activated, str) and month_activated:
             try:
                 from datetime import datetime as dt, date
                 activated = dt.strptime(month_activated, "%Y-%m").date().replace(day=1)
@@ -139,16 +163,16 @@ def fmt_mom(curr, prev, month_activated=None):
 
 
 def fmt_roi(val):
-    if val is None or (isinstance(val, float) and math.isnan(val)):
+    if _isna(val):
         return "N/A"
     return f"{val:.0f}%"
 
 
 def fmt_activated(val):
-    if not val:
+    # NaN is truthy in Python, so guard with isinstance rather than truthiness
+    if not isinstance(val, str) or not val:
         return ""
-    # Keep only YYYY-MM
-    return str(val)[:7]
+    return val[:7]
 
 
 # ---------------------------------------------------------------------------
@@ -184,52 +208,61 @@ def build_grid_data(df):
 
     rows = []
     for _, row in df.iterrows():
-        curr = row.get("usage_this_month", 0) or 0
-        prev = row.get("usage_prev_month", 0) or 0
-        month_activated = row.get("Month Activated") or None
-        status = row.get("roi_status", "")
-        hide_roi = row.get("_hide_roi", False)
+        curr  = _safe_num(row.get("usage_this_month"))
+        prev  = _safe_num(row.get("usage_prev_month"))
+        # Month Activated must be a str for strptime; NaN is truthy so don't use `or`
+        month_activated = row.get("Month Activated")
+        if not isinstance(month_activated, str):
+            month_activated = None
+        status   = row.get("roi_status", "") or ""
+        hide_roi = bool(row.get("_hide_roi", False))
 
-        mo_target = row.get("Monthly ROI Goal")
+        mo_target  = row.get("Monthly ROI Goal")
         mo_roi_raw = row.get("mo_roi_pct")
+
+        u3   = int(_safe_num(row.get("usage_last_3_months")))
+        u12  = int(_safe_num(row.get("usage_last_12_months")))
+        prev_hrs = _safe_num(row.get("usage_prev_month")) * _safe_num(row.get("Minutes Saved per usage")) / 60
+        proj_cost = _safe_num(row.get("project_cost"))
+
         rows.append({
             "_id":              str(_),
             "_roi_status":      status,
-            "_activity_status": row.get("activity_status", ""),
+            "_activity_status": row.get("activity_status", "") or "",
             "_hide_roi":        hide_roi,
-            "Client":           row.get("CLIENT", ""),
-            "Project":          row.get("PROJECT", ""),
+            "Client":           row.get("CLIENT", "") or "",
+            "Project":          row.get("PROJECT", "") or "",
             "Activated":        fmt_activated(row.get("Month Activated")),
-            "Mo Target":        fmt_currency(mo_target) if mo_target else "",
+            "Mo Target":        fmt_currency(mo_target) if not _isna(mo_target) and mo_target else "",
             "1 mo":             int(curr),
             "MoM %":            fmt_mom(curr, prev, month_activated),
             "Mo ROI %":         fmt_roi(mo_roi_raw),
-            "_mo_roi_pct_raw":  mo_roi_raw,
-            "3 mo":             int(row.get("usage_last_3_months", 0) or 0),
-            "12 mo":            int(row.get("usage_last_12_months", 0) or 0),
+            "_mo_roi_pct_raw":  None if _isna(mo_roi_raw) else mo_roi_raw,
+            "3 mo":             u3,
+            "12 mo":            u12,
             "Hrs This Mo":      fmt_hours(row.get("time_saved_hours_this_month")),
             "Hrs 12mo":         fmt_hours(row.get("time_saved_hours_12mo")),
-            "Investment":       fmt_currency(row.get("project_cost")) if row.get("project_cost") else "",
+            "Investment":       fmt_currency(proj_cost) if proj_cost else "",
             "Total Saved":      fmt_currency(row.get("cumulative_cost_saved")),
             "ROI %":            fmt_roi(row.get("roi_progress_percent")),
             # Raw values for the detail panel
-            "_usage_1mo":       f"{curr} usages",
-            "_usage_3mo":       f"{int(row.get('usage_last_3_months', 0) or 0)} usages",
-            "_usage_12mo":      f"{int(row.get('usage_last_12_months', 0) or 0)} usages",
+            "_usage_1mo":       f"{int(curr)} usages",
+            "_usage_3mo":       f"{u3} usages",
+            "_usage_12mo":      f"{u12} usages",
             "_mom_pct":         fmt_mom(curr, prev, month_activated),
             "_hrs_this_mo":     fmt_hours(row.get("time_saved_hours_this_month")),
-            "_hrs_prev_mo":     fmt_hours((row.get("usage_prev_month") or 0) * (row.get("Minutes Saved per usage") or 0) / 60),
+            "_hrs_prev_mo":     fmt_hours(prev_hrs),
             "_hrs_12mo":        fmt_hours(row.get("time_saved_hours_12mo")),
-            "_investment":      fmt_currency(row.get("project_cost")) if row.get("project_cost") else "—",
+            "_investment":      fmt_currency(proj_cost) if proj_cost else "—",
             "_saved_this_mo":   fmt_currency(row.get("cost_saved_this_month")) or "—",
             "_total_saved":     fmt_currency(row.get("cumulative_cost_saved")),
-            "_mo_target":       fmt_currency(mo_target) if mo_target else "—",
+            "_mo_target":       fmt_currency(mo_target) if not _isna(mo_target) and mo_target else "—",
             "_roi_pct":         fmt_roi(row.get("roi_progress_percent")),
-            "_roi_pct_raw":     row.get("roi_progress_percent"),
-            "_mom_pct_raw":     row.get("mom_usage_percent"),
-            "_breakeven":       row.get("breakeven_estimate", ""),
-            "_project_group":   row.get("_project_group", ""),
-            "_client":          row.get("CLIENT", ""),
+            "_roi_pct_raw":     None if _isna(row.get("roi_progress_percent")) else row.get("roi_progress_percent"),
+            "_mom_pct_raw":     None if _isna(row.get("mom_usage_percent")) else row.get("mom_usage_percent"),
+            "_breakeven":       row.get("breakeven_estimate", "") or "",
+            "_project_group":   row.get("_project_group", "") or "",
+            "_client":          row.get("CLIENT", "") or "",
             # Boolean ROI tags for multi-chip column
             "_tag_roi_reached":  bool(row.get("tag_roi_reached", False)),
             "_tag_usage_dropped":bool(row.get("tag_usage_dropped", False)),
@@ -1051,8 +1084,8 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
 
     # --- Fetch raw timeseries + build monthly savings for the store ---
     raw_store = _fetch_project_timeseries(client, project, project_group) or {}
-    minutes_saved = float(matching_df.iloc[0].get("Minutes Saved per usage") or 0)
-    hourly_rate   = float(matching_df.iloc[0].get("Client Hourly Rate") or 0)
+    minutes_saved = _safe_num(matching_df.iloc[0].get("Minutes Saved per usage"))
+    hourly_rate   = _safe_num(matching_df.iloc[0].get("Client Hourly Rate"))
     raw_store['minutes_saved'] = minutes_saved
     raw_store['hourly_rate']   = hourly_rate
     # Monthly savings from stored monthly usage × rates (key = "Janvier 2025" etc.)
@@ -1063,7 +1096,7 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         idx  = (current_month_idx - i) % 12
         year = now.year if idx <= current_month_idx else now.year - 1
         mname = MONTHS_FR[idx]
-        usage = float(matching_df.iloc[0].get(mname, 0) or 0)
+        usage = _safe_num(matching_df.iloc[0].get(mname, 0))
         monthly_savings[f"{mname} {year}"] = round(usage * minutes_saved / 60 * hourly_rate, 2)
     raw_store['monthly_savings'] = monthly_savings
 
@@ -1117,7 +1150,7 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
     current_month_idx = pd.Timestamp.now().month - 1  # 0-based
     ytd_months = MONTHS_FR[:current_month_idx + 1]
     row_data = matching_df.iloc[0]
-    ytd_usage = int(sum(float(row_data.get(m, 0) or 0) for m in ytd_months))
+    ytd_usage = int(sum(_safe_num(row_data.get(m, 0)) for m in ytd_months))
     ytd_savings = ytd_usage * minutes_saved / 60 * hourly_rate
 
     # --- Tab 1: Usage ---
