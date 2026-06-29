@@ -97,7 +97,8 @@ def df_to_store(df):
 def df_from_store(store_data):
     if not store_data:
         return pd.DataFrame()
-    return pd.read_json(store_data, orient="split")
+    import io
+    return pd.read_json(io.StringIO(store_data), orient="split")
 
 
 # ---------------------------------------------------------------------------
