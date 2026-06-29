@@ -1,6 +1,4 @@
-streamlit
 pandas
-openpyxl
 plotly
 python-dateutil
 supabase
@@ -10,3 +8,4 @@ dash>=2.14
 dash-bootstrap-components
 dash-ag-grid
 gunicorn
+numpy
