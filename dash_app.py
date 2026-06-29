@@ -122,7 +122,7 @@ def fmt_mom(curr, prev, month_activated=None):
         return "–"
     if prev == 0 and curr > 0:
         # Only label "New" if the project was activated within the last 2 months
-        if month_activated:
+        if month_activated and isinstance(month_activated, str):
             try:
                 from datetime import datetime as dt, date
                 activated = dt.strptime(month_activated, "%Y-%m").date().replace(day=1)
