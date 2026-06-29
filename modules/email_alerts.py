@@ -133,94 +133,102 @@ def remove_subscriber(email):
         return True, "Unsubscribed successfully!"
     return False, "Email not found"
 
+ALERT_STATUSES = {"Usage Dropped", "No Recent Usage"}
+
+
+def _build_alert_email(row, status, dashboard_url):
+    client = row.get('CLIENT', '')
+    project = row.get('PROJECT', '')
+    usage_1mo = row.get('usage_this_month', 0)
+    usage_3mo = row.get('usage_last_3_months', 0)
+
+    if status == "Usage Dropped":
+        subject = f"⚠️ Usage Drop — {client} / {project}"
+        headline = "Usage has dropped significantly"
+        color = "#e65100"
+        detail = f"""
+        <p>This project was active but usage has fallen by more than 50% compared to its historical average.</p>
+        <ul>
+            <li><strong>This month:</strong> {int(usage_1mo)} uses</li>
+            <li><strong>Last 3 months total:</strong> {int(usage_3mo)} uses</li>
+            <li><strong>Alert type:</strong> Usage Dropped (&gt;50% decline from historical average)</li>
+        </ul>"""
+    else:  # No Recent Usage
+        subject = f"🔴 No Recent Usage — {client} / {project}"
+        headline = "No usage recorded this month"
+        color = "#d32f2f"
+        detail = f"""
+        <p>This project had activity in the last 3 months but has recorded zero usage so far this month.</p>
+        <ul>
+            <li><strong>This month:</strong> 0 uses</li>
+            <li><strong>Last 3 months total:</strong> {int(usage_3mo)} uses</li>
+            <li><strong>Alert type:</strong> No Recent Usage</li>
+        </ul>"""
+
+    body = f"""
+    <div style="border-left: 4px solid {color}; padding-left: 16px; margin-bottom: 16px;">
+        <h3 style="color: {color}; margin: 0 0 4px 0;">{headline}</h3>
+        <p style="margin: 0; color: #555; font-size: 14px;"><strong>{client}</strong> — {project}</p>
+    </div>
+    {detail}
+    <p style="margin-top: 20px;">
+        <a href="{dashboard_url}" style="background-color: #00c4ce; color: white; padding: 10px 20px;
+           text-decoration: none; border-radius: 4px; font-weight: bold;">
+            View Dashboard
+        </a>
+    </p>"""
+    return subject, body
+
+
 def check_and_send_alerts(df, smtp_config, alert_config):
-    """Check all projects and send alerts if needed"""
+    """Check all projects and send alerts for Usage Dropped / No Recent Usage."""
     alerts_sent = []
     alerts_skipped = []
 
-    # Don't alert on weekends — no one is working
     today = datetime.now()
-    if today.weekday() >= 5:  # 5=Saturday, 6=Sunday
+    if today.weekday() >= 5:
         return [], [{'project': 'ALL', 'reason': f'Skipped — today is a {today.strftime("%A")}'}]
 
-    # Get recipients from config (comma-separated list)
     recipient_list = alert_config.get('to_emails', [])
-    
     if not recipient_list:
         return [], [{'project': 'N/A', 'reason': 'No recipients configured in ALERT_TO_EMAILS'}]
-    
+
+    dashboard_url = alert_config.get('dashboard_url', '#')
+
     for _, row in df.iterrows():
         project_key = f"{row['COMPANY']}_{row['PROJECT']}"
-        
-        # Check if yesterday's usage is below 3-month average
-        yesterday_usage = row.get('usage_yesterday', 0)
-        recent_avg = row.get('recent_monthly_avg', 0)
-        
-        # Alert condition: yesterday < 3-month daily average (strictly less than)
-        # daily_avg = total_3mo_usage / 90 days (approx 3 months)
-        usage_3mo = row.get('usage_last_3_months', 0)
-        daily_avg_3mo = usage_3mo / 90 if usage_3mo > 0 else 0
-        if daily_avg_3mo == 0:
-            alerts_skipped.append({'project': project_key, 'reason': 'No 3-month baseline (avg=0)'})
-            continue
-        
-        if yesterday_usage < daily_avg_3mo:
-            # Prepare email
-            subject = f"Usage Drop Alert: {row['CLIENT']} - {row['PROJECT']}"
-            body = f"""
-            <p><strong>Project:</strong> {row['CLIENT']} - {row['PROJECT']}</p>
-            <p><strong>Last Weekday Usage:</strong> {yesterday_usage:.0f}</p>
-            <p><strong>3-Month Daily Average:</strong> {daily_avg_3mo:.2f} ({usage_3mo:.0f} usages / 90 days)</p>
-            <p><strong>Status:</strong> <span style="color: #d32f2f;">Below Average</span></p>
+        status = row.get('roi_status', '')
 
-            <h3>Details:</h3>
-            <ul>
-                <li>This month usage: {row.get('usage_this_month', 0):.0f}</li>
-                <li>Last 3 months total: {row.get('usage_last_3_months', 0):.0f}</li>
-                <li>ROI Status: {row.get('roi_status', 'Unknown')}</li>
-            </ul>
-            
-            <p style="margin-top: 20px;">
-                <a href="{alert_config.get('dashboard_url', '#')}" 
-                   style="background-color: #1976d2; color: white; padding: 10px 20px; 
-                          text-decoration: none; border-radius: 4px;">
-                    View Dashboard
-                </a>
-            </p>
-            """
-            
-            # Send email to ALL recipients
-            all_success = True
-            failed_recipients = []
-            
-            for recipient_email in recipient_list:
-                success, message = send_email_alert(
-                    smtp_config,
-                    recipient_email,
-                    subject,
-                    body
-                )
-                
-                if not success:
-                    all_success = False
-                    failed_recipients.append(f"{recipient_email} ({message})")
-            
-            if all_success:
-                alerts_sent.append({
-                    'project': project_key,
-                    'yesterday': yesterday_usage,
-                    'avg': daily_avg_3mo,
-                    'sent_to': len(recipient_list)
-                })
-            else:
-                alerts_skipped.append({
-                    'project': project_key,
-                    'reason': f"Failed to send to: {', '.join(failed_recipients)}"
-                })
+        if status not in ALERT_STATUSES:
+            alerts_skipped.append({'project': project_key, 'reason': f'Status OK: {status}'})
+            continue
+
+        ok_to_send, reason = should_send_alert(project_key)
+        if not ok_to_send:
+            alerts_skipped.append({'project': project_key, 'reason': reason})
+            continue
+
+        subject, body = _build_alert_email(row, status, dashboard_url)
+
+        all_success = True
+        failed = []
+        for email in recipient_list:
+            success, message = send_email_alert(smtp_config, email, subject, body)
+            if not success:
+                all_success = False
+                failed.append(f"{email} ({message})")
+
+        if all_success:
+            record_alert(project_key)
+            alerts_sent.append({
+                'project': project_key,
+                'status': status,
+                'sent_to': len(recipient_list),
+            })
         else:
             alerts_skipped.append({
                 'project': project_key,
-                'reason': f'Above average ({yesterday_usage:.0f} >= {daily_avg_3mo:.1f})'
+                'reason': f"Send failed: {', '.join(failed)}",
             })
-    
+
     return alerts_sent, alerts_skipped

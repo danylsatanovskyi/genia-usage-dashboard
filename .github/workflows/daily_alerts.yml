@@ -1,0 +1,35 @@
+name: Daily Usage Alerts
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'   # 9:00 AM UTC, Monday–Friday
+  workflow_dispatch:          # allow manual runs from GitHub UI
+
+jobs:
+  send-alerts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily alerts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_TO_EMAILS: ${{ secrets.ALERT_TO_EMAILS }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+        run: python run_daily_alerts.py
