@@ -402,6 +402,127 @@ def build_client_table(client_rows):
     )
 
 
+def _build_client_summary(client_df):
+    """Aggregate metrics bar shown at the top of each client accordion section."""
+    n_total  = len(client_df)
+    n_active = int(client_df["tag_active"].fillna(False).sum()) if "tag_active" in client_df.columns else 0
+
+    total_investment = client_df["project_cost"].apply(_safe_num).sum() if "project_cost" in client_df.columns else 0
+    total_saved      = client_df["cumulative_cost_saved"].apply(_safe_num).sum() if "cumulative_cost_saved" in client_df.columns else 0
+    roi_net          = total_saved - total_investment
+
+    def _stat(label, value, color=None):
+        return html.Div([
+            html.Span(label, style={
+                "fontSize": "10px", "color": "#999", "fontWeight": "600",
+                "textTransform": "uppercase", "letterSpacing": "0.4px",
+                "display": "block", "marginBottom": "2px",
+            }),
+            html.Span(value, style={"fontSize": "13px", "fontWeight": "700", "color": color or DARK}),
+        ], style={"padding": "8px 16px", "borderRight": "1px solid #e8f5f5"})
+
+    roi_color  = "#2e7d32" if roi_net >= 0 else "#c62828"
+    roi_prefix = "+" if roi_net > 0 else ""
+    roi_str    = f"{roi_prefix}{fmt_currency(roi_net)}" if total_investment > 0 else "—"
+
+    return html.Div([
+        _stat("Projects",   f"{n_active} / {n_total} active"),
+        _stat("Total Saved",  fmt_currency(total_saved)      or "—"),
+        _stat("Investment",   fmt_currency(total_investment)  or "—"),
+        _stat("Net ROI",      roi_str,                          color=roi_color),
+    ], style={
+        "display": "flex", "flexWrap": "wrap",
+        "background": "#f5fffe", "borderRadius": "8px",
+        "border": "1px solid #d8f0f0", "marginBottom": "12px", "overflow": "hidden",
+    })
+
+
+def _build_client_charts(client_df, client_id):
+    """Build monthly usage + savings trend charts for a client. Returns (toggle_btn, collapse)."""
+    now = pd.Timestamp.now()
+    current_month_idx = now.month - 1
+
+    months_ordered = []
+    for i in range(11, -1, -1):
+        idx  = (current_month_idx - i) % 12
+        year = now.year if idx <= current_month_idx else now.year - 1
+        months_ordered.append((MONTHS_FR[idx], f"{MONTHS_FR[idx][:3]} '{str(year)[2:]}"))
+
+    labels         = [lbl for _, lbl in months_ordered]
+    usage_totals   = []
+    savings_totals = []
+
+    for month_name, _ in months_ordered:
+        u_total = 0.0
+        s_total = 0.0
+        if month_name in client_df.columns:
+            for _, row in client_df.iterrows():
+                u     = _safe_num(row.get(month_name))
+                mins  = _safe_num(row.get("Minutes Saved per usage"))
+                rate  = _safe_num(row.get("Client Hourly Rate"))
+                u_total += u
+                s_total += u * mins / 60 * rate
+        usage_totals.append(u_total)
+        savings_totals.append(s_total)
+
+    max_u = max(usage_totals,   default=0)
+    max_s = max(savings_totals, default=0)
+
+    usage_fig = go.Figure(go.Bar(
+        x=labels, y=usage_totals,
+        marker_color=[BRAND if v == max_u else "#80e0e6" for v in usage_totals],
+    ))
+    usage_fig.update_layout(
+        title={"text": "Monthly Usage (all projects)", "font": {"size": 11, "color": "#888"}, "x": 0.01},
+        margin={"l": 10, "r": 10, "t": 30, "b": 20},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False, "rangemode": "tozero"},
+        xaxis={"showgrid": False, "tickfont": {"size": 9}},
+        height=180, showlegend=False,
+    )
+
+    savings_fig = go.Figure(go.Bar(
+        x=labels, y=savings_totals,
+        marker_color=[BRAND if v == max_s else "#80e0e6" for v in savings_totals],
+        text=[fmt_currency(v) if v > 0 else "" for v in savings_totals],
+        textposition="outside", cliponaxis=False,
+        textfont={"size": 9, "color": DARK},
+    ))
+    savings_fig.update_layout(
+        title={"text": "Monthly Savings (all projects)", "font": {"size": 11, "color": "#888"}, "x": 0.01},
+        margin={"l": 10, "r": 10, "t": 30, "b": 30},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False, "rangemode": "tozero",
+               "tickprefix": "$", "range": [0, max_s * 1.35] if max_s > 0 else None},
+        xaxis={"showgrid": False, "tickfont": {"size": 9}},
+        height=180, showlegend=False,
+    )
+
+    toggle = html.Button(
+        [html.I(className="bi bi-bar-chart-line", style={"fontSize": "11px", "marginRight": "5px"}),
+         "Show Charts"],
+        id={"type": "client-charts-toggle", "client": client_id},
+        n_clicks=0,
+        style={
+            "background": "transparent", "border": f"1px solid {BRAND}",
+            "color": BRAND, "borderRadius": "12px", "padding": "3px 12px",
+            "fontSize": "11px", "fontWeight": "600", "cursor": "pointer",
+            "marginTop": "10px",
+        },
+    )
+
+    collapse = dbc.Collapse(
+        dbc.Row([
+            dbc.Col(dcc.Graph(figure=usage_fig,   config={"displayModeBar": False}), xs=12, md=6),
+            dbc.Col(dcc.Graph(figure=savings_fig, config={"displayModeBar": False}), xs=12, md=6),
+        ], style={"marginTop": "6px", "marginBottom": "4px"}),
+        id={"type": "client-charts-collapse", "client": client_id},
+        is_open=False,
+    )
+
+    return toggle, collapse
+
+
 # ---------------------------------------------------------------------------
 # Column list (defined here so make_portfolio_tab can reference it)
 # ---------------------------------------------------------------------------
@@ -918,11 +1039,19 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
     accordion_items = []
     for client in df["CLIENT"].unique():
-        client_rows = [r for r in all_rows if r.get("Client") == client]
-        table = build_client_table(client_rows)
+        client_rows   = [r for r in all_rows if r.get("Client") == client]
+        client_df_sub = df[df["CLIENT"] == client]
+        summary       = _build_client_summary(client_df_sub)
+        table         = build_client_table(client_rows)
+        toggle, collapse = _build_client_charts(client_df_sub, client)
         accordion_items.append(
             dbc.AccordionItem(
-                html.Div(table, style={"overflowX": "auto"}),
+                html.Div([
+                    summary,
+                    html.Div(table, style={"overflowX": "auto"}),
+                    toggle,
+                    collapse,
+                ]),
                 title=client,
                 item_id=f"client-{client}",
             )
@@ -935,6 +1064,18 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
         flush=True,
         style={"marginBottom": "16px"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 3a. Toggle client charts collapse (clientside — no server round-trip)
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    "function(n, isOpen) { return n ? !isOpen : isOpen; }",
+    Output({"type": "client-charts-collapse", "client": dash.MATCH}, "is_open"),
+    Input({"type": "client-charts-toggle",    "client": dash.MATCH}, "n_clicks"),
+    State({"type": "client-charts-collapse",  "client": dash.MATCH}, "is_open"),
+    prevent_initial_call=True,
+)
 
 
 # ---------------------------------------------------------------------------
