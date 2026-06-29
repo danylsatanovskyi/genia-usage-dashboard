@@ -311,6 +311,7 @@ def build_client_table(client_rows):
 
     headers = html.Thead(html.Tr([
         html.Th("Project",          style=th_style),
+        html.Th("Activated",        style={**th_style, "textAlign": "center"}),
         html.Th("Activity",         style={**th_style, "textAlign": "center"}),
         html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}),
         html.Th("1 mo",             style={**th_style, "textAlign": "right"}),
@@ -374,6 +375,8 @@ def build_client_table(client_rows):
                        "paddingLeft": "32px" if hide_roi else "14px",
                        "borderLeft": f"4px solid {border_color}"},
             ),
+            html.Td(row.get("Activated", "") or "—",
+                    style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}),
             html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}),
             html.Td(roi_chips, style={**td_base, "minWidth": "140px"}),
             html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}),
