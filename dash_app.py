@@ -1333,31 +1333,38 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         _chart_card("savings-trend-graph", height=220),
     ], style={"padding": "20px 4px 4px 4px"}))
 
-    # --- Tab 3: Hours Saved ---
+    # --- Tab 3: Hours Saved — 6-month bar chart ---
     hrs_this_mo_raw = row.get("_hrs_this_mo", "—")
     hrs_prev_mo_raw = row.get("_hrs_prev_mo", "—")
     hrs_12mo_raw    = row.get("_hrs_12mo",    "—")
 
-    def _parse_hrs(s):
-        try: return float(str(s).replace("h", "").strip())
-        except: return 0
+    # Build last 6 months of hours saved from monthly usage × rates
+    _6mo_labels = []
+    _6mo_hrs    = []
+    for i in range(5, -1, -1):
+        idx        = (current_month_idx - i) % 12
+        year       = now.year if idx <= current_month_idx else now.year - 1
+        month_name = MONTHS_FR[idx]
+        label      = f"{month_name[:3]} '{str(year)[2:]}"
+        usage      = _safe_num(row_data.get(month_name, 0))
+        _6mo_labels.append(label)
+        _6mo_hrs.append(usage * minutes_saved / 60)
 
-    h1 = _parse_hrs(hrs_this_mo_raw)
-    hp = _parse_hrs(hrs_prev_mo_raw)
-    bar_fig = go.Figure()
-    bar_fig.add_trace(go.Bar(
-        x=["Last Month", "This Month"], y=[hp, h1],
-        marker_color=["#80e0e6", BRAND],
-        text=[hrs_prev_mo_raw, hrs_this_mo_raw],
+    max_h = max(_6mo_hrs, default=0.1)
+    bar_fig = go.Figure(go.Bar(
+        x=_6mo_labels, y=_6mo_hrs,
+        marker_color=[BRAND if v == max_h else "#80e0e6" for v in _6mo_hrs],
+        text=[fmt_hours(v) if v > 0 else "" for v in _6mo_hrs],
         textposition="outside", cliponaxis=False,
-        textfont={"size": 13, "color": DARK},
+        textfont={"size": 11, "color": DARK},
     ))
     bar_fig.update_layout(
-        margin={"l": 20, "r": 20, "t": 40, "b": 20},
+        margin={"l": 20, "r": 20, "t": 10, "b": 20},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
-               "range": [0, max(h1, hp, 0.1) * 1.35]},
-        xaxis={"showgrid": False}, height=220, showlegend=False,
+               "range": [0, max_h * 1.35]},
+        xaxis={"showgrid": False, "tickfont": {"size": 11}},
+        height=220, showlegend=False,
     )
     tab_hours = dbc.Tab(label="Hours Saved", tab_id="tab-hours", children=html.Div([
         dbc.Row([
@@ -1365,11 +1372,8 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
             dbc.Col(_pill("Last Month", hrs_prev_mo_raw),               xs=6, md=4, className="mb-3"),
             dbc.Col(_pill("12 Months",  hrs_12mo_raw),                  xs=6, md=4, className="mb-3"),
         ], className="mb-2"),
-        dbc.Row(dbc.Col(
-            dbc.Card(dbc.CardBody(dcc.Graph(figure=bar_fig, config={"displayModeBar": False})),
-                     style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
-            xs=12, md=5,
-        )),
+        dbc.Card(dbc.CardBody(dcc.Graph(figure=bar_fig, config={"displayModeBar": False})),
+                 style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
     ], style={"padding": "20px 4px 4px 4px"}))
 
     body = dbc.Tabs(
