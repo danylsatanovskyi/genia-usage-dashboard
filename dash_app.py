@@ -1365,8 +1365,11 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
             dbc.Col(_pill("Last Month", hrs_prev_mo_raw),               xs=6, md=4, className="mb-3"),
             dbc.Col(_pill("12 Months",  hrs_12mo_raw),                  xs=6, md=4, className="mb-3"),
         ], className="mb-2"),
-        dbc.Card(dbc.CardBody(dcc.Graph(figure=bar_fig, config={"displayModeBar": False})),
-                 style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
+        dbc.Row(dbc.Col(
+            dbc.Card(dbc.CardBody(dcc.Graph(figure=bar_fig, config={"displayModeBar": False})),
+                     style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
+            xs=12, md=5,
+        )),
     ], style={"padding": "20px 4px 4px 4px"}))
 
     body = dbc.Tabs(
