@@ -1196,13 +1196,16 @@ app.clientside_callback(
         var triggered = window.dash_clientside.callback_context.triggered;
         if (!triggered || triggered.length === 0) return current_sorts || {};
         var id = JSON.parse(triggered[0].prop_id.split('.')[0]);
+        var parts = id.index.split('||');
+        var client = parts[0];
+        var key    = parts[1];
         var updated = Object.assign({}, current_sorts);
-        updated[id.client] = id.key;
+        updated[client] = key;
         return updated;
     }
     """,
     Output("client-sort-store", "data"),
-    Input({"type": "client-sort-btn", "client": dash.ALL, "key": dash.ALL}, "n_clicks"),
+    Input({"type": "client-sort-btn", "index": dash.ALL}, "n_clicks"),
     State("client-sort-store", "data"),
     prevent_initial_call=True,
 )
@@ -1282,7 +1285,7 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
             *[
                 dbc.Button(
                     label,
-                    id={"type": "client-sort-btn", "client": client, "key": key},
+                    id={"type": "client-sort-btn", "index": f"{client}||{key}"},
                     size="sm",
                     outline=(active_sort != key),
                     color="info",
