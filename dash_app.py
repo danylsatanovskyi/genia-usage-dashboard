@@ -536,11 +536,11 @@ TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 # App layout helpers
 # ---------------------------------------------------------------------------
 
-SIDEBAR_BG = "#0f1923"
+SIDEBAR_BG = BRAND
 
 def make_sidebar():
     label_style = {
-        "color": "rgba(255,255,255,0.5)", "fontWeight": "700", "fontSize": "10px",
+        "color": "rgba(255,255,255,0.7)", "fontWeight": "700", "fontSize": "10px",
         "textTransform": "uppercase", "letterSpacing": "0.8px", "marginBottom": "6px",
         "display": "flex", "alignItems": "center", "gap": "6px",
     }
@@ -548,19 +548,19 @@ def make_sidebar():
     def _filter_block(icon, label, child):
         return html.Div([
             html.Div([
-                html.I(className=f"bi {icon}", style={"fontSize": "10px", "color": BRAND}),
+                html.I(className=f"bi {icon}", style={"fontSize": "10px", "color": "rgba(255,255,255,0.8)"}),
                 html.Span(label),
             ], style=label_style),
             child,
         ], style={"marginBottom": "4px"})
 
     section_divider = html.Div([
-        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.08)"}),
+        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.3)"}),
         html.Span("Filters", style={
-            "fontSize": "9px", "fontWeight": "700", "color": "rgba(255,255,255,0.25)",
+            "fontSize": "9px", "fontWeight": "700", "color": "rgba(255,255,255,0.6)",
             "textTransform": "uppercase", "letterSpacing": "1.2px", "padding": "0 10px",
         }),
-        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.08)"}),
+        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.3)"}),
     ], style={"display": "flex", "alignItems": "center", "margin": "4px 0"})
 
     dd_style = {"fontSize": "13px"}
@@ -594,7 +594,7 @@ def make_sidebar():
                     "borderRadius": "12px",
                     "padding": "14px 18px",
                     "textAlign": "center",
-                    "boxShadow": f"0 0 0 1px rgba(0,196,206,0.25), 0 4px 16px rgba(0,196,206,0.12)",
+                    "boxShadow": "0 4px 16px rgba(0,0,0,0.12)",
                 },
             ),
 
@@ -605,7 +605,7 @@ def make_sidebar():
                     "marginBottom": "2px", "letterSpacing": "-0.2px",
                 }),
                 html.P("AI Solution Performance & ROI", style={
-                    "color": "rgba(255,255,255,0.35)", "fontSize": "11px", "marginBottom": 0,
+                    "color": "rgba(255,255,255,0.6)", "fontSize": "11px", "marginBottom": 0,
                 }),
             ]),
 
@@ -617,10 +617,10 @@ def make_sidebar():
                 n_clicks=0,
                 style={
                     "width": "100%", "padding": "9px 0",
-                    "background": "transparent",
-                    "border": f"1px solid rgba(0,196,206,0.4)",
+                    "background": "rgba(255,255,255,0.15)",
+                    "border": "1px solid rgba(255,255,255,0.35)",
                     "borderRadius": "10px",
-                    "color": BRAND, "fontWeight": "700", "fontSize": "13px",
+                    "color": "white", "fontWeight": "700", "fontSize": "13px",
                     "cursor": "pointer", "letterSpacing": "0.2px",
                     "transition": "background 0.15s, border-color 0.15s",
                 },
@@ -637,7 +637,7 @@ def make_sidebar():
             # Footer
             html.Div(style={"flex": 1}),
             html.Div("Genia © 2026", style={
-                "fontSize": "10px", "color": "rgba(255,255,255,0.18)",
+                "fontSize": "10px", "color": "rgba(255,255,255,0.4)",
                 "textAlign": "center", "letterSpacing": "0.4px",
             }),
         ],
