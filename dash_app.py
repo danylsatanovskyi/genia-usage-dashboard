@@ -2003,17 +2003,36 @@ def save_configuration(n_clicks, activated_vals, activated_ids, inv_vals, goal_v
 
     metadata = load_project_metadata()
 
+    # Validate all numeric fields before saving anything
+    field_labels = {
+        "inv":   "Investment ($)",
+        "goal":  "Monthly ROI Goal ($)",
+        "mins":  "Minutes Saved / Usage",
+        "rate":  "Client Hourly Rate ($/hr)",
+    }
+    validation_errors = []
+    all_vals = {"inv": inv_vals, "goal": goal_vals, "mins": mins_vals, "rate": rate_vals}
+    for field_key, vals in all_vals.items():
+        for i, v in enumerate(vals or []):
+            if v is None or str(v).strip() == "":
+                continue  # empty is fine — treated as null
+            parsed = _parse_num(v)
+            if parsed is None:
+                safe_key = (activated_ids[i] or {}).get("key", f"row {i+1}")
+                validation_errors.append(f'"{v}" is not a valid number for {field_labels[field_key]} (row: {safe_key})')
+
+    if validation_errors:
+        return dbc.Alert(
+            [html.Strong("Invalid values — nothing was saved:"), html.Br()] +
+            [html.Span(f"• {e}") for e in validation_errors[:5]],
+            color="danger", duration=8000,
+        ), no_update
+
     for i, id_dict in enumerate(activated_ids):
         safe_key = id_dict["key"]
-        # Reverse the safe_key encoding to get back the original project_key
-        # We store the original key in data-project-key on the block — but since
-        # pattern-match callbacks only give us the component ID, we reconstruct from safe_key.
-        # The safe_key replaced spaces and slashes with underscores, so we can't perfectly
-        # reverse it. Instead we look up by safe_key directly in metadata by scanning keys.
         original_key = _find_original_key(safe_key, metadata)
         if original_key is None:
-            # New key — build from safe_key (best effort)
-            original_key = safe_key.replace("_", " ", 1)  # only first underscore = worksheet sep
+            original_key = safe_key.replace("_", " ", 1)
 
         entry = metadata.get(original_key, {})
         entry["month_activated"] = activated_vals[i] or None
