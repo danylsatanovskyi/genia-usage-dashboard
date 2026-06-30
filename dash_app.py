@@ -1950,22 +1950,22 @@ def render_settings_accordion(store_data):
                         dbc.Col([
                             dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-investment", "key": safe_key},
-                                      type="number", value=inv_val, placeholder="e.g. 5000", size="sm", step="any"),
+                                      type="text", inputMode="decimal", value=inv_val, placeholder="e.g. 5000", size="sm"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-goal", "key": safe_key},
-                                      type="number", value=goal_val, placeholder="e.g. 500", size="sm", step="any"),
+                                      type="text", inputMode="decimal", value=goal_val, placeholder="e.g. 500", size="sm"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-minutes", "key": safe_key},
-                                      type="number", value=mins_val, placeholder="e.g. 10", size="sm", step="any"),
+                                      type="text", inputMode="decimal", value=mins_val, placeholder="e.g. 10", size="sm"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-rate", "key": safe_key},
-                                      type="number", value=rate_val, placeholder="e.g. 50", size="sm", step="any"),
+                                      type="text", inputMode="decimal", value=rate_val, placeholder="e.g. 50", size="sm"),
                         ], md=6, className="mb-2"),
                     ]),
                     html.Hr(style={"margin": "12px 0"}),
@@ -2055,10 +2055,14 @@ def _parse_num(val):
     if val is None:
         return None
     if isinstance(val, (int, float)):
-        return float(val)
+        v = round(float(val), 2)
+        return int(v) if v == int(v) else v
     s = str(val).replace("$", "").replace(",", "").strip()
+    if not s:
+        return None
     try:
-        return float(s)
+        v = round(float(s), 2)
+        return int(v) if v == int(v) else v
     except ValueError:
         return None
 
