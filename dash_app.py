@@ -804,13 +804,16 @@ def make_settings_tab():
                         color=BRAND,
                         children=html.Div(id="settings-accordion"),
                     ),
-                    dbc.Button(
-                        "Save Configuration",
-                        id="btn-save-config",
-                        color="primary",
-                        style={"background": BRAND, "border": "none", "marginTop": "20px", "fontWeight": "600"},
-                    ),
-                    html.Div(id="save-config-status", style={"marginTop": "10px"}),
+                    dcc.Loading(html.Div([
+                        dbc.Button(
+                            "Save Configuration",
+                            id="btn-save-config",
+                            color="primary",
+                            style={"background": BRAND, "border": "none", "marginTop": "20px", "fontWeight": "600"},
+                        ),
+                        html.Div(id="save-config-status", style={"marginTop": "10px"}),
+                    ]), type="circle", color=BRAND,
+                    overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=8),
                 dbc.Col([
                     html.H5("Status Reference", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
@@ -818,12 +821,13 @@ def make_settings_tab():
                     html.Hr(style={"margin": "20px 0"}),
                     html.H5("Hidden Projects", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
                     html.Div(id="hidden-projects-list"),
-                    html.Div([
+                    dcc.Loading(html.Div([
                         html.Label("Hide a Project:", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
                         dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…", style={"marginBottom": "8px"}),
                         dbc.Button("Hide Project", id="btn-hide-project", color="warning", size="sm"),
-                    ], style={"marginTop": "20px"}),
-                    html.Div(id="hide-project-status", style={"marginTop": "10px"}),
+                        html.Div(id="hide-project-status", style={"marginTop": "10px"}),
+                    ], style={"marginTop": "20px"}), type="circle", color=BRAND,
+                    overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=4),
             ]),
         ],
@@ -854,6 +858,7 @@ app.layout = html.Div(
         dcc.Store(id="settings-inputs-store"),   # holds current settings field values
         dcc.Store(id="hidden-store", data=load_hidden_projects()),  # holds hidden projects list
         dcc.Store(id="modal-raw-store"),         # raw timeseries for open project
+        dcc.Store(id="modal-project-key"),       # triggers slow modal body load
         dcc.Store(id="usage-granularity", data="monthly"),  # granularity toggle state
 
         # Layout: sidebar + main
@@ -1227,82 +1232,58 @@ def _fetch_project_timeseries(client, project, project_group):
         return None
 
 
-@app.callback(
-    Output("solution-modal", "is_open"),
-    Output("solution-modal-title", "children"),
-    Output("solution-modal-body", "children"),
-    Output("modal-raw-store", "data"),
-    Input({"type": "row-details-btn", "index": dash.ALL}, "n_clicks"),
-    State("data-store", "data"),
-    prevent_initial_call=True,
-)
-def show_solution_modal(all_n_clicks, store_data):
-    import traceback
-    try:
-        return _show_solution_modal_inner(all_n_clicks, store_data)
-    except Exception:
-        traceback.print_exc()
-        return False, "", "", None
+def _modal_chip(label, color_map):
+    bg, fg = color_map.get(label, ("#e2e3e5", "#383d41"))
+    return html.Span(label, style={
+        "marginLeft": "8px", "fontSize": "11px", "fontWeight": "700",
+        "background": bg, "color": fg,
+        "padding": "3px 10px", "borderRadius": "12px", "verticalAlign": "middle",
+    })
 
 
-def _show_solution_modal_inner(all_n_clicks, store_data):
-    triggered = ctx.triggered_id
-    if not triggered or not any(n for n in (all_n_clicks or []) if n):
-        return False, "", "", no_update
-
-    project_key = triggered["index"]
-    client, project = project_key.split("___", 1)
-
-    df = df_from_store(store_data)
-    if df.empty:
-        return False, "", "", None
-
+def _build_modal_title(client, project, df):
     mask = (df["CLIENT"] == client) & (df["PROJECT"] == project)
     matching_df = df[mask]
     if matching_df.empty:
-        return False, "", "", None
+        return None
+    row_data = matching_df.iloc[0]
+    return html.Div([
+        html.Span(f"{client}  —  {project}", style={"fontWeight": "700", "fontSize": "17px", "color": DARK}),
+        _modal_chip(row_data.get("activity_status", "") or "", ACTIVITY_CHIP),
+        _modal_chip(row_data.get("roi_status",      "") or "", ROI_CHIP),
+    ])
+
+
+def _build_modal_body(client, project, df):
+    """Build the full modal body. Hits Supabase for timeseries. Returns (body, raw_store)."""
+    mask = (df["CLIENT"] == client) & (df["PROJECT"] == project)
+    matching_df = df[mask]
+    if matching_df.empty:
+        return "Project not found.", None
 
     _, all_rows = build_grid_data(matching_df)
     if not all_rows:
-        return False, "", "", None
+        return "No data.", None
 
     row = all_rows[0]
     project_group = row.get("_project_group", project)
 
-    # --- Fetch raw timeseries + build monthly savings for the store ---
-    raw_store = _fetch_project_timeseries(client, project, project_group) or {}
+    raw_store     = _fetch_project_timeseries(client, project, project_group) or {}
     minutes_saved = _safe_num(matching_df.iloc[0].get("Minutes Saved per usage"))
     hourly_rate   = _safe_num(matching_df.iloc[0].get("Client Hourly Rate"))
     raw_store['minutes_saved'] = minutes_saved
     raw_store['hourly_rate']   = hourly_rate
-    # Monthly savings from stored monthly usage × rates (key = "Janvier 2025" etc.)
+
     now = pd.Timestamp.now()
     current_month_idx = now.month - 1
     monthly_savings = {}
     for i in range(11, -1, -1):
-        idx  = (current_month_idx - i) % 12
-        year = now.year if idx <= current_month_idx else now.year - 1
+        idx   = (current_month_idx - i) % 12
+        year  = now.year if idx <= current_month_idx else now.year - 1
         mname = MONTHS_FR[idx]
         usage = _safe_num(matching_df.iloc[0].get(mname, 0))
         monthly_savings[f"{mname} {year}"] = round(usage * minutes_saved / 60 * hourly_rate, 2)
     raw_store['monthly_savings'] = monthly_savings
-
-    roi_status      = row.get("_roi_status", "")
-    activity_status = row.get("_activity_status", "")
-
-    def _modal_chip(label, color_map):
-        bg, fg = color_map.get(label, ("#e2e3e5", "#383d41"))
-        return html.Span(label, style={
-            "marginLeft": "8px", "fontSize": "11px", "fontWeight": "700",
-            "background": bg, "color": fg,
-            "padding": "3px 10px", "borderRadius": "12px", "verticalAlign": "middle",
-        })
-
-    title = html.Div([
-        html.Span(f"{client}  —  {project}", style={"fontWeight": "700", "fontSize": "17px", "color": DARK}),
-        _modal_chip(activity_status, ACTIVITY_CHIP),
-        _modal_chip(roi_status, ROI_CHIP),
-    ])
 
     def _pill(label, value, accent=False):
         return html.Div([
@@ -1330,17 +1311,15 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         style={"textAlign": "right", "marginBottom": "8px"},
     )
 
-    roi_bar  = _build_roi_bar(row)
+    roi_bar   = _build_roi_bar(row)
     breakeven = row.get("_breakeven", "")
 
-    # --- YTD calculations ---
-    current_month_idx = pd.Timestamp.now().month - 1  # 0-based
     ytd_months = MONTHS_FR[:current_month_idx + 1]
-    row_data = matching_df.iloc[0]
-    ytd_usage = int(sum(_safe_num(row_data.get(m, 0)) for m in ytd_months))
+    row_data   = matching_df.iloc[0]
+    ytd_usage  = int(sum(_safe_num(row_data.get(m, 0)) for m in ytd_months))
     ytd_savings = ytd_usage * minutes_saved / 60 * hourly_rate
 
-    # --- Tab 1: Usage ---
+    # Tab 1: Usage
     tab_usage = dbc.Tab(label="Usage", tab_id="tab-usage", children=html.Div([
         dbc.Row([
             dbc.Col(_pill("This Month", row.get("_usage_1mo",  "—"), accent=True), xs=6, md=True, className="mb-3"),
@@ -1353,13 +1332,13 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         _chart_card("usage-trend-graph", height=260),
     ], style={"padding": "20px 4px 4px 4px"}))
 
-    # --- Tab 2: ROI & Financials ---
+    # Tab 2: ROI & Financials
     tab_roi = dbc.Tab(label="ROI & Financials", tab_id="tab-roi", children=html.Div([
         dbc.Row([
-            dbc.Col(_pill("Investment",   row.get("_investment",    "—")),              xs=6, md=3, className="mb-3"),
-            dbc.Col(_pill("Total Saved",  row.get("_total_saved",   "—")),              xs=6, md=3, className="mb-3"),
-            dbc.Col(_pill("YTD Savings",  fmt_currency(ytd_savings) if ytd_savings else "—"), xs=6, md=3, className="mb-3"),
-            dbc.Col(_pill("ROI %",        row.get("_roi_pct",       "—"), accent=True), xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("Investment",   row.get("_investment",    "—")),                             xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("Total Saved",  row.get("_total_saved",   "—")),                             xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("YTD Savings",  fmt_currency(ytd_savings) if ytd_savings else "—"),          xs=6, md=3, className="mb-3"),
+            dbc.Col(_pill("ROI %",        row.get("_roi_pct",       "—"), accent=True),                xs=6, md=3, className="mb-3"),
         ], className="mb-2"),
         dbc.Row([
             dbc.Col(_pill("Mo Target",    row.get("_mo_target",     "—")),              xs=6, md=4, className="mb-3"),
@@ -1379,36 +1358,32 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         _chart_card("savings-trend-graph", height=220),
     ], style={"padding": "20px 4px 4px 4px"}))
 
-    # --- Tab 3: Hours Saved — 6-month bar chart ---
+    # Tab 3: Hours Saved — 12-month bar chart
     hrs_this_mo_raw = row.get("_hrs_this_mo", "—")
     hrs_prev_mo_raw = row.get("_hrs_prev_mo", "—")
     hrs_12mo_raw    = row.get("_hrs_12mo",    "—")
 
-    # Build last 6 months of hours saved from monthly usage × rates
-    _6mo_labels = []
-    _6mo_hrs    = []
+    _mo_labels = []
+    _mo_hrs    = []
     for i in range(11, -1, -1):
         idx        = (current_month_idx - i) % 12
         year       = now.year if idx <= current_month_idx else now.year - 1
         month_name = MONTHS_FR[idx]
-        label      = f"{month_name[:3]} '{str(year)[2:]}"
-        usage      = _safe_num(row_data.get(month_name, 0))
-        _6mo_labels.append(label)
-        _6mo_hrs.append(usage * minutes_saved / 60)
+        _mo_labels.append(f"{month_name[:3]} '{str(year)[2:]}")
+        _mo_hrs.append(_safe_num(row_data.get(month_name, 0)) * minutes_saved / 60)
 
-    max_h = max(_6mo_hrs, default=0.1)
+    max_h = max(_mo_hrs, default=0.1)
     bar_fig = go.Figure(go.Bar(
-        x=_6mo_labels, y=_6mo_hrs,
-        marker_color=[BRAND if v == max_h else "#80e0e6" for v in _6mo_hrs],
-        text=[fmt_hours(v) if v > 0 else "" for v in _6mo_hrs],
+        x=_mo_labels, y=_mo_hrs,
+        marker_color=[BRAND if v == max_h else "#80e0e6" for v in _mo_hrs],
+        text=[fmt_hours(v) if v > 0 else "" for v in _mo_hrs],
         textposition="outside", cliponaxis=False,
         textfont={"size": 11, "color": DARK},
     ))
     bar_fig.update_layout(
         margin={"l": 20, "r": 20, "t": 10, "b": 20},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
-               "range": [0, max_h * 1.35]},
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False, "range": [0, max_h * 1.35]},
         xaxis={"showgrid": False, "tickfont": {"size": 11}},
         height=220, showlegend=False,
     )
@@ -1427,8 +1402,61 @@ def _show_solution_modal_inner(all_n_clicks, store_data):
         active_tab="tab-usage",
         style={"borderBottom": f"2px solid {BRAND}"},
     )
+    return body, raw_store
 
-    return True, title, body, raw_store
+
+# ---------------------------------------------------------------------------
+# 5. Solution detail modal — Phase 1: open instantly (no Supabase)
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("solution-modal", "is_open"),
+    Output("solution-modal-title", "children"),
+    Output("modal-project-key", "data"),
+    Input({"type": "row-details-btn", "index": dash.ALL}, "n_clicks"),
+    State("data-store", "data"),
+    prevent_initial_call=True,
+)
+def open_modal(all_n_clicks, store_data):
+    triggered = ctx.triggered_id
+    if not triggered or not any(n for n in (all_n_clicks or []) if n):
+        return False, no_update, no_update
+
+    project_key = triggered["index"]
+    client, project = project_key.split("___", 1)
+
+    df = df_from_store(store_data)
+    title = _build_modal_title(client, project, df)
+    if title is None:
+        return False, "", no_update
+
+    # Include a timestamp so re-opening the same project always triggers the body callback
+    return True, title, {"key": project_key, "t": pd.Timestamp.now().isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# 5. Solution detail modal — Phase 2: load body + charts (hits Supabase)
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("solution-modal-body", "children"),
+    Output("modal-raw-store", "data"),
+    Input("modal-project-key", "data"),
+    State("data-store", "data"),
+    prevent_initial_call=True,
+)
+def load_modal_body(modal_key_data, store_data):
+    import traceback
+    if not modal_key_data:
+        return no_update, no_update
+    try:
+        client, project = modal_key_data["key"].split("___", 1)
+        df = df_from_store(store_data)
+        if df.empty:
+            return "No data available.", None
+        body, raw_store = _build_modal_body(client, project, df)
+        return body, raw_store
+    except Exception:
+        traceback.print_exc()
+        return "Error loading project details.", None
 
 
 # ---------------------------------------------------------------------------
