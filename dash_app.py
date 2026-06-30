@@ -536,67 +536,110 @@ TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 # App layout helpers
 # ---------------------------------------------------------------------------
 
+SIDEBAR_BG = "#0f1923"
+
 def make_sidebar():
+    label_style = {
+        "color": "rgba(255,255,255,0.5)", "fontWeight": "700", "fontSize": "10px",
+        "textTransform": "uppercase", "letterSpacing": "0.8px", "marginBottom": "6px",
+        "display": "flex", "alignItems": "center", "gap": "6px",
+    }
+
+    def _filter_block(icon, label, child):
+        return html.Div([
+            html.Div([
+                html.I(className=f"bi {icon}", style={"fontSize": "10px", "color": BRAND}),
+                html.Span(label),
+            ], style=label_style),
+            child,
+        ], style={"marginBottom": "4px"})
+
+    section_divider = html.Div([
+        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.08)"}),
+        html.Span("Filters", style={
+            "fontSize": "9px", "fontWeight": "700", "color": "rgba(255,255,255,0.25)",
+            "textTransform": "uppercase", "letterSpacing": "1.2px", "padding": "0 10px",
+        }),
+        html.Div(style={"flex": 1, "height": "1px", "background": "rgba(255,255,255,0.08)"}),
+    ], style={"display": "flex", "alignItems": "center", "margin": "4px 0"})
+
+    dd_style = {"fontSize": "13px"}
+
     return html.Div(
         style={
-            "width": "260px",
+            "width": "272px",
             "minHeight": "100vh",
-            "background": BRAND,
-            "padding": "24px 16px",
+            "background": SIDEBAR_BG,
+            "padding": "24px 18px",
             "display": "flex",
             "flexDirection": "column",
-            "gap": "20px",
+            "gap": "16px",
             "position": "fixed",
             "top": 0,
             "left": 0,
             "bottom": 0,
             "overflowY": "auto",
             "zIndex": 100,
+            "boxShadow": "4px 0 24px rgba(0,0,0,0.18)",
         },
         children=[
             # Logo
             html.Div(
                 html.Img(
                     src="https://genia.co/wp-content/uploads/2022/10/logo_genia.svg",
-                    style={"maxWidth": "100%", "maxHeight": "60px"},
+                    style={"maxWidth": "100%", "maxHeight": "52px"},
                 ),
                 style={
                     "background": "white",
                     "borderRadius": "12px",
-                    "padding": "12px 16px",
+                    "padding": "14px 18px",
                     "textAlign": "center",
+                    "boxShadow": f"0 0 0 1px rgba(0,196,206,0.25), 0 4px 16px rgba(0,196,206,0.12)",
                 },
             ),
+
+            # App title + subtitle
+            html.Div([
+                html.P("Usage Dashboard", style={
+                    "color": "white", "fontWeight": "800", "fontSize": "15px",
+                    "marginBottom": "2px", "letterSpacing": "-0.2px",
+                }),
+                html.P("AI Solution Performance & ROI", style={
+                    "color": "rgba(255,255,255,0.35)", "fontSize": "11px", "marginBottom": 0,
+                }),
+            ]),
+
             # Refresh button
-            dbc.Button(
-                [html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Data"],
+            html.Button(
+                [html.I(className="bi bi-arrow-clockwise", style={"marginRight": "7px"}),
+                 "Refresh Data"],
                 id="btn-refresh",
-                color="light",
-                className="w-100",
-                style={"fontWeight": "600", "color": DARK},
+                n_clicks=0,
+                style={
+                    "width": "100%", "padding": "9px 0",
+                    "background": "transparent",
+                    "border": f"1px solid rgba(0,196,206,0.4)",
+                    "borderRadius": "10px",
+                    "color": BRAND, "fontWeight": "700", "fontSize": "13px",
+                    "cursor": "pointer", "letterSpacing": "0.2px",
+                    "transition": "background 0.15s, border-color 0.15s",
+                },
             ),
-            html.Hr(style={"borderColor": "rgba(255,255,255,0.4)", "margin": "0"}),
+
+            section_divider,
+
             # Filters
-            html.Div([
-                html.Label("Filter by Client", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                dcc.Dropdown(id="filter-client", options=[], value="All",
-                             clearable=False, style={"fontSize": "13px"}),
-            ]),
-            html.Div([
-                html.Label("Filter by Project", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                dcc.Dropdown(id="filter-project", options=[], value="All",
-                             clearable=False, style={"fontSize": "13px"}),
-            ]),
-            html.Div([
-                html.Label("Filter by Activity", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                dcc.Dropdown(id="filter-activity", options=[], value=None,
-                             multi=True, placeholder="Any activity…", style={"fontSize": "13px"}),
-            ]),
-            html.Div([
-                html.Label("Filter by Status", style={"color": "white", "fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                dcc.Dropdown(id="filter-roi-status", options=[], value=None,
-                             multi=True, placeholder="Any status…", style={"fontSize": "13px"}),
-            ]),
+            _filter_block("bi-building",      "Client",   dcc.Dropdown(id="filter-client",     options=[], value="All", clearable=False, style=dd_style)),
+            _filter_block("bi-folder2",       "Project",  dcc.Dropdown(id="filter-project",    options=[], value="All", clearable=False, style=dd_style)),
+            _filter_block("bi-activity",      "Activity", dcc.Dropdown(id="filter-activity",   options=[], value=None, multi=True, placeholder="Any activity…",  style=dd_style)),
+            _filter_block("bi-tag",           "Status",   dcc.Dropdown(id="filter-roi-status", options=[], value=None, multi=True, placeholder="Any status…",    style=dd_style)),
+
+            # Footer
+            html.Div(style={"flex": 1}),
+            html.Div("Genia © 2026", style={
+                "fontSize": "10px", "color": "rgba(255,255,255,0.18)",
+                "textAlign": "center", "letterSpacing": "0.4px",
+            }),
         ],
     )
 
@@ -822,7 +865,7 @@ app.layout = html.Div(
 
                 # Main content (offset by sidebar width)
                 html.Div(
-                    style={"marginLeft": "260px", "flex": 1, "padding": "32px 32px 32px 32px", "minHeight": "100vh"},
+                    style={"marginLeft": "272px", "flex": 1, "padding": "32px 32px 32px 32px", "minHeight": "100vh"},
                     children=[
                         # Header
                         html.Div([
