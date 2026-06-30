@@ -23,3 +23,9 @@ services:
         sync: false
       - key: DASHBOARD_URL
         sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
