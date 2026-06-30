@@ -28,20 +28,7 @@ def send_email_alert(smtp_config, to_email, subject, body):
         msg["To"]      = to_email
         msg["Subject"] = subject
 
-        html_body = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif;">
-                <h2 style="color: #d32f2f;">Usage Alert</h2>
-                {body}
-                <hr>
-                <p style="color: #666; font-size: 12px;">
-                    Automated alert from the Genia Usage Dashboard.<br>
-                    Sent on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S UTC')}
-                </p>
-            </body>
-        </html>
-        """
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(body, "html"))
 
         server = smtplib.SMTP(smtp_config["smtp_server"], smtp_config["smtp_port"])
         server.starttls()
@@ -57,46 +44,111 @@ def send_email_alert(smtp_config, to_email, subject, body):
 # Email body builders
 # ---------------------------------------------------------------------------
 
+BRAND   = "#00c4ce"
+DARK    = "#13100d"
+
+
 def _build_alert_email(row, status, dashboard_url):
-    client   = row.get("CLIENT", "")
-    project  = row.get("PROJECT", "")
-    usage_1mo  = int(row.get("usage_this_month",     0) or 0)
-    usage_3mo  = int(row.get("usage_last_3_months",  0) or 0)
+    client    = row.get("CLIENT", "")
+    project   = row.get("PROJECT", "")
+    usage_1mo = int(row.get("usage_this_month",    0) or 0)
+    usage_3mo = int(row.get("usage_last_3_months", 0) or 0)
+    date_str  = datetime.utcnow().strftime("%B %d, %Y")
 
     if status == "Usage Dropped":
-        subject  = f"⚠️ Usage Drop — {client} / {project}"
-        headline = "Usage has dropped significantly"
-        color    = "#e65100"
-        detail   = f"""
-        <p>This project was active but usage has fallen by more than 50% vs its historical average.</p>
-        <ul>
-            <li><strong>This month:</strong> {usage_1mo} uses</li>
-            <li><strong>Last 3 months total:</strong> {usage_3mo} uses</li>
-        </ul>"""
+        subject    = f"Usage Alert — {client} / {project}"
+        badge_text = "Usage Dropped"
+        badge_bg   = "#fff3e0"
+        badge_fg   = "#e65100"
+        accent     = "#e65100"
+        description = "Usage has fallen by more than 50% compared to this project's historical average."
+        stats = [
+            ("This month",       f"{usage_1mo} uses"),
+            ("Last 3 months",    f"{usage_3mo} uses total"),
+            ("Threshold",        "50% drop from historical avg"),
+        ]
     else:  # No Recent Usage
-        subject  = f"🔴 No Recent Usage — {client} / {project}"
-        headline = "No usage recorded this month"
-        color    = "#d32f2f"
-        detail   = f"""
-        <p>This project had activity in the last 3 months but has recorded zero usage so far this month.</p>
-        <ul>
-            <li><strong>This month:</strong> 0 uses</li>
-            <li><strong>Last 3 months total:</strong> {usage_3mo} uses</li>
-        </ul>"""
+        subject    = f"Usage Alert — {client} / {project}"
+        badge_text = "No Recent Usage"
+        badge_bg   = "#fdecea"
+        badge_fg   = "#c62828"
+        accent     = "#c62828"
+        description = "This project had activity in the last 3 months but has recorded zero usage so far this month."
+        stats = [
+            ("This month",    "0 uses"),
+            ("Last 3 months", f"{usage_3mo} uses total"),
+        ]
 
-    body = f"""
-    <div style="border-left: 4px solid {color}; padding-left: 16px; margin-bottom: 16px;">
-        <h3 style="color: {color}; margin: 0 0 4px 0;">{headline}</h3>
-        <p style="margin: 0; color: #555; font-size: 14px;"><strong>{client}</strong> — {project}</p>
-    </div>
-    {detail}
-    <p style="margin-top: 20px;">
-        <a href="{dashboard_url}" style="background-color: #00c4ce; color: white; padding: 10px 20px;
-           text-decoration: none; border-radius: 4px; font-weight: bold;">
-            View Dashboard
-        </a>
-    </p>"""
-    return subject, body
+    stat_rows = "".join(f"""
+        <tr>
+            <td style="padding: 10px 16px; color: #555; font-size: 13px; border-bottom: 1px solid #f0f0f0;">{label}</td>
+            <td style="padding: 10px 16px; font-weight: 600; font-size: 13px; color: {DARK}; border-bottom: 1px solid #f0f0f0; text-align: right;">{value}</td>
+        </tr>""" for label, value in stats)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0; padding:0; background:#f4f6f8; font-family: 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8; padding: 40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:{DARK}; padding: 24px 32px;">
+            <span style="font-size: 20px; font-weight: 800; color: {BRAND}; letter-spacing: -0.5px;">genia</span>
+            <span style="font-size: 13px; color: #888; margin-left: 12px;">Usage Dashboard</span>
+          </td>
+        </tr>
+
+        <!-- Accent bar -->
+        <tr><td style="background:{accent}; height:4px;"></td></tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding: 32px 32px 24px 32px;">
+            <span style="display:inline-block; background:{badge_bg}; color:{badge_fg}; font-size:11px;
+                         font-weight:700; text-transform:uppercase; letter-spacing:0.8px;
+                         padding: 4px 12px; border-radius:20px; margin-bottom:16px;">
+              {badge_text}
+            </span>
+            <h2 style="margin: 0 0 4px 0; font-size: 20px; color:{DARK}; font-weight:700;">{client}</h2>
+            <p style="margin: 0 0 20px 0; font-size: 14px; color:#888;">{project}</p>
+            <p style="margin: 0 0 24px 0; font-size: 14px; color:#444; line-height:1.6;">{description}</p>
+
+            <!-- Stats table -->
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="border: 1px solid #f0f0f0; border-radius:8px; overflow:hidden; margin-bottom:28px;">
+              {stat_rows}
+            </table>
+
+            <!-- CTA -->
+            <a href="{dashboard_url}"
+               style="display:inline-block; background:{BRAND}; color:#ffffff; font-size:14px;
+                      font-weight:700; padding:12px 28px; border-radius:8px; text-decoration:none;
+                      letter-spacing:0.2px;">
+              View Dashboard
+            </a>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9f9f9; padding:16px 32px; border-top:1px solid #f0f0f0;">
+            <p style="margin:0; font-size:11px; color:#aaa;">
+              Automated alert from Genia &middot; {date_str}<br>
+              To stop receiving alerts, contact your dashboard administrator.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    return subject, html
 
 
 # ---------------------------------------------------------------------------
