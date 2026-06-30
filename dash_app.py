@@ -263,9 +263,13 @@ def build_grid_data(df):
             "_roi_pct":         fmt_roi(row.get("roi_progress_percent")),
             "_roi_pct_raw":     None if _isna(row.get("roi_progress_percent")) else row.get("roi_progress_percent"),
             "_mom_pct_raw":     None if _isna(row.get("mom_usage_percent")) else row.get("mom_usage_percent"),
-            "_breakeven":       row.get("breakeven_estimate", "") or "",
-            "_project_group":   row.get("_project_group", "") or "",
-            "_client":          row.get("CLIENT", "") or "",
+            "_breakeven":           row.get("breakeven_estimate", "") or "",
+            "_project_group":       row.get("_project_group", "") or "",
+            "_client":              row.get("CLIENT", "") or "",
+            # Raw numerics for sort presets
+            "_usage_1mo_raw":       curr,
+            "_total_saved_raw":     _safe_num(row.get("cumulative_cost_saved")),
+            "_usage_drop_pct_raw":  _safe_num(row.get("usage_drop_percent")),
             # Boolean ROI tags for multi-chip column
             "_tag_roi_reached":  bool(row.get("tag_roi_reached", False)),
             "_tag_usage_dropped":bool(row.get("tag_usage_dropped", False)),
@@ -731,6 +735,27 @@ def make_portfolio_tab():
                 dbc.Col(make_metric_card("ROI Reached", "metric-roi-reached",      "bi-trophy",         "projects fully paid off"),xs=12, sm=4, md=True, className="mb-3"),
             ], className="mb-4"),
 
+            # Sort presets
+            html.Div([
+                html.Span("Sort by:", style={"fontSize": "12px", "color": "#888", "fontWeight": "600",
+                                             "marginRight": "10px", "lineHeight": "30px"}),
+                *[
+                    dbc.Button(label, id={"type": "sort-btn", "key": key}, size="sm", outline=True,
+                               color="info", className="me-2 mb-2",
+                               style={"borderRadius": "20px", "fontSize": "12px",
+                                      "--bs-btn-color": BRAND, "--bs-btn-border-color": BRAND,
+                                      "--bs-btn-hover-bg": BRAND, "--bs-btn-active-bg": BRAND})
+                    for key, label in [
+                        ("default",      "Default"),
+                        ("drop",         "Biggest Drop"),
+                        ("low_usage",    "Lowest Usage"),
+                        ("high_savings", "Highest Savings"),
+                        ("roi_closest",  "Closest to ROI"),
+                    ]
+                ],
+            ], style={"marginBottom": "12px", "display": "flex", "flexWrap": "wrap", "alignItems": "center"}),
+            dcc.Store(id="sort-preset", data="default"),
+
             # Portfolio table (grouped by client)
             dcc.Loading(
                 id="loading-table",
@@ -1182,8 +1207,50 @@ def update_filter_options(store_data):
 
 
 # ---------------------------------------------------------------------------
+# 3a. Sort preset selection — clientside, instant
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    """
+    function(n_clicks_list, current) {
+        var triggered = window.dash_clientside.callback_context.triggered;
+        if (!triggered || triggered.length === 0) return current || 'default';
+        var id = JSON.parse(triggered[0].prop_id.split('.')[0]);
+        return id.key;
+    }
+    """,
+    Output("sort-preset", "data"),
+    Input({"type": "sort-btn", "key": dash.ALL}, "n_clicks"),
+    State("sort-preset", "data"),
+    prevent_initial_call=True,
+)
+
+# Highlight active sort button
+app.clientside_callback(
+    """
+    function(preset, n_list) {
+        var keys = ['default','drop','low_usage','high_savings','roi_closest'];
+        return keys.map(function(k) { return k === preset; });
+    }
+    """,
+    [Output({"type": "sort-btn", "key": k}, "active")
+     for k in ["default", "drop", "low_usage", "high_savings", "roi_closest"]],
+    Input("sort-preset", "data"),
+    Input({"type": "sort-btn", "key": dash.ALL}, "n_clicks"),
+    prevent_initial_call=False,
+)
+
+
+# ---------------------------------------------------------------------------
 # 3. Update portfolio table based on filters
 # ---------------------------------------------------------------------------
+_SORT_KEYS = {
+    "drop":         lambda r: -_safe_num(r.get("_usage_drop_pct_raw")),
+    "low_usage":    lambda r:  _safe_num(r.get("_usage_1mo_raw", 0)),
+    "high_savings": lambda r: -_safe_num(r.get("_total_saved_raw")),
+    "roi_closest":  lambda r: -_safe_num(r.get("_roi_pct_raw")),
+}
+
+
 @app.callback(
     Output("client-accordion-container", "children"),
     Input("data-store", "data"),
@@ -1192,8 +1259,9 @@ def update_filter_options(store_data):
     Input("filter-project", "value"),
     Input("filter-activity", "value"),
     Input("filter-roi-status", "value"),
+    Input("sort-preset", "data"),
 )
-def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, sort_preset):
     df = df_from_store(store_data)
     if df.empty:
         return []
@@ -1211,8 +1279,20 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
     _, all_rows = build_grid_data(df)
 
+    # Apply preset sort (sorts across all clients)
+    sort_fn = _SORT_KEYS.get(sort_preset or "default")
+    if sort_fn:
+        all_rows = sorted(all_rows, key=sort_fn)
+
     accordion_items = []
-    for client in df["CLIENT"].unique():
+    # Preserve client grouping order based on sorted rows
+    seen_clients = []
+    for r in all_rows:
+        c = r.get("Client")
+        if c and c not in seen_clients:
+            seen_clients.append(c)
+
+    for client in seen_clients:
         client_rows   = [r for r in all_rows if r.get("Client") == client]
         client_df_sub = df[df["CLIENT"] == client]
         summary       = _build_client_summary(client_df_sub)
