@@ -1779,10 +1779,14 @@ def render_settings_accordion(store_data):
             for display_name, project_key in entries:
                 meta = metadata.get(project_key, {})
 
-                inv_val = meta.get("investment")
-                goal_val = meta.get("monthly_roi_goal")
-                mins_val = meta.get("minutes_saved_per_usage")
-                rate_val = meta.get("client_hourly_rate")
+                def _round_val(v):
+                    if v is None: return None
+                    r = round(float(v), 2)
+                    return int(r) if r == int(r) else r
+                inv_val  = _round_val(meta.get("investment"))
+                goal_val = _round_val(meta.get("monthly_roi_goal"))
+                mins_val = _round_val(meta.get("minutes_saved_per_usage"))
+                rate_val = _round_val(meta.get("client_hourly_rate"))
                 activated_val = meta.get("month_activated") or ""
 
                 safe_key = project_key.replace(" ", "_").replace("/", "_")
@@ -1798,22 +1802,22 @@ def render_settings_accordion(store_data):
                         dbc.Col([
                             dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-investment", "key": safe_key},
-                                      type="number", value=inv_val, placeholder="e.g. 5000", size="sm"),
+                                      type="number", value=inv_val, placeholder="e.g. 5000", size="sm", step="any"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-goal", "key": safe_key},
-                                      type="number", value=goal_val, placeholder="e.g. 500", size="sm"),
+                                      type="number", value=goal_val, placeholder="e.g. 500", size="sm", step="any"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-minutes", "key": safe_key},
-                                      type="number", value=mins_val, placeholder="e.g. 10", size="sm"),
+                                      type="number", value=mins_val, placeholder="e.g. 10", size="sm", step="any"),
                         ], md=6, className="mb-2"),
                         dbc.Col([
                             dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
                             dbc.Input(id={"type": "meta-rate", "key": safe_key},
-                                      type="number", value=rate_val, placeholder="e.g. 50", size="sm"),
+                                      type="number", value=rate_val, placeholder="e.g. 50", size="sm", step="any"),
                         ], md=6, className="mb-2"),
                     ]),
                     html.Hr(style={"margin": "12px 0"}),
