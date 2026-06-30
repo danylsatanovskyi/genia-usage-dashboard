@@ -932,9 +932,9 @@ _LOGIN_HTML = """<!DOCTYPE html>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="POST" action="/login">
       <label>Username</label>
-      <input type="text" name="username" autocomplete="username" autofocus>
+      <input type="text" name="username" autocomplete="off" autofocus>
       <label>Password</label>
-      <input type="password" name="password" autocomplete="current-password">
+      <input type="password" name="password" autocomplete="off">
       <button type="submit">Continue</button>
     </form>
   </div>
