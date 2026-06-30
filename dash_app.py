@@ -736,6 +736,7 @@ def make_portfolio_tab():
             ], className="mb-4"),
 
             dcc.Store(id="client-sort-store", data={}),
+            dcc.Store(id="accordion-active-store", data=None),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -1210,6 +1211,14 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 
+# Save accordion open/close state so rebuild can restore it
+app.clientside_callback(
+    "function(active) { return active == null ? window.dash_clientside.no_update : active; }",
+    Output("accordion-active-store", "data"),
+    Input("client-accordion", "active_item"),
+    prevent_initial_call=True,
+)
+
 
 # ---------------------------------------------------------------------------
 # 3. Update portfolio table based on filters
@@ -1232,8 +1241,9 @@ _SORT_KEYS = {
     Input("filter-activity", "value"),
     Input("filter-roi-status", "value"),
     Input("client-sort-store", "data"),
+    State("accordion-active-store", "data"),
 )
-def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts, accordion_active):
     df = df_from_store(store_data)
     if df.empty:
         return []
@@ -1317,9 +1327,17 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
             )
         )
 
+    all_item_ids = [f"client-{c}" for c in clients]
+    if accordion_active is not None:
+        # Restore saved state; ensure any newly visible clients are open
+        active_items = list(accordion_active) + [i for i in all_item_ids if i not in accordion_active]
+    else:
+        active_items = all_item_ids
+
     return dbc.Accordion(
         accordion_items,
-        start_collapsed=False,
+        id="client-accordion",
+        active_item=active_items,
         always_open=True,
         flush=True,
         style={"marginBottom": "16px"},
