@@ -632,7 +632,7 @@ def make_sidebar():
             _filter_block("bi-building",      "Client",   dcc.Dropdown(id="filter-client",     options=[], value="All", clearable=False, style=dd_style)),
             _filter_block("bi-folder2",       "Project",  dcc.Dropdown(id="filter-project",    options=[], value="All", clearable=False, style=dd_style)),
             _filter_block("bi-activity",      "Activity", dcc.Dropdown(id="filter-activity",   options=[], value=None, multi=True, placeholder="Any activity…",  style=dd_style)),
-            _filter_block("bi-tag",           "Status",   dcc.Dropdown(id="filter-roi-status", options=[], value=None, multi=True, placeholder="Any status…",    style=dd_style)),
+            _filter_block("bi-bar-chart",      "Status",   dcc.Dropdown(id="filter-roi-status", options=[], value=None, multi=True, placeholder="Any status…",    style=dd_style)),
 
             # Footer
             html.Div(style={"flex": 1}),
