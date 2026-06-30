@@ -1,0 +1,9 @@
+/* Smooth fade-in when accordion content updates */
+@keyframes tableFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+#client-accordion-container > * {
+    animation: tableFadeIn 0.18s ease;
+}

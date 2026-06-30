@@ -743,6 +743,8 @@ def make_portfolio_tab():
                 id="loading-table",
                 type="circle",
                 color=BRAND,
+                overlay_style={"visibility": "visible", "opacity": 0.15},
+                custom_spinner=html.Div(style={"display": "none"}),
                 children=html.Div(id="client-accordion-container"),
             ),
 
