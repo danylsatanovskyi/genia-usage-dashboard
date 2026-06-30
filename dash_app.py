@@ -1038,7 +1038,8 @@ app.layout = html.Div(
                     style={"background": "#f0fafb"},
                 ),
                 dcc.Loading(
-                    dbc.ModalBody(id="solution-modal-body", style={"padding": "24px"}),
+                    dbc.ModalBody(id="solution-modal-body",
+                                  style={"padding": "24px", "overflowY": "auto", "maxHeight": "72vh"}),
                     color=BRAND, type="circle",
                     style={"minHeight": "200px"},
                 ),
