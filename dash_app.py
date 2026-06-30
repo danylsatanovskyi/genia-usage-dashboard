@@ -156,7 +156,7 @@ def fmt_mom(curr, prev, month_activated=None):
                     return "New"
             except ValueError:
                 pass
-        return "+∞"
+        return "↑ from 0"
     pct = (curr - prev) / (prev + 0.01) * 100
     sign = "+" if pct >= 0 else ""
     return f"{sign}{pct:.0f}%"
