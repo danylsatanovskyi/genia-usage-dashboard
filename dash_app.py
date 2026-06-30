@@ -1244,10 +1244,11 @@ app.clientside_callback(
 # 3. Update portfolio table based on filters
 # ---------------------------------------------------------------------------
 _SORT_KEYS = {
-    "drop":         lambda r: -_safe_num(r.get("_usage_drop_pct_raw")),
-    "low_usage":    lambda r:  _safe_num(r.get("_usage_1mo_raw", 0)),
-    "high_savings": lambda r: -_safe_num(r.get("_total_saved_raw")),
-    "roi_closest":  lambda r: -_safe_num(r.get("_roi_pct_raw")),
+    # Negated = descending (worst/best first). min() in client aggregation picks the worst project per client.
+    "drop":         lambda r: -_safe_num(r.get("_usage_drop_pct_raw")),   # highest drop first
+    "low_usage":    lambda r:  _safe_num(r.get("_usage_1mo_raw", 0)),      # lowest usage first
+    "high_savings": lambda r: -_safe_num(r.get("_total_saved_raw")),       # highest savings first
+    "roi_closest":  lambda r: -_safe_num(r.get("_roi_pct_raw")),           # highest ROI% first
 }
 
 
@@ -1279,21 +1280,25 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
     _, all_rows = build_grid_data(df)
 
-    # Apply preset sort (sorts across all clients)
+    # Build per-client row lookup
+    rows_by_client = {}
+    for r in all_rows:
+        rows_by_client.setdefault(r.get("Client"), []).append(r)
+
+    clients = list(dict.fromkeys(r.get("Client") for r in all_rows))
+
+    # Sort client sections by aggregate metric
     sort_fn = _SORT_KEYS.get(sort_preset or "default")
     if sort_fn:
-        all_rows = sorted(all_rows, key=sort_fn)
+        def _client_key(c):
+            client_rows = rows_by_client.get(c, [])
+            vals = [sort_fn(r) for r in client_rows]
+            return min(vals) if vals else 0  # min because sort_fn already negates for desc sorts
+        clients = sorted(clients, key=_client_key)
 
     accordion_items = []
-    # Preserve client grouping order based on sorted rows
-    seen_clients = []
-    for r in all_rows:
-        c = r.get("Client")
-        if c and c not in seen_clients:
-            seen_clients.append(c)
-
-    for client in seen_clients:
-        client_rows   = [r for r in all_rows if r.get("Client") == client]
+    for client in clients:
+        client_rows   = rows_by_client.get(client, [])
         client_df_sub = df[df["CLIENT"] == client]
         summary       = _build_client_summary(client_df_sub)
         table         = build_client_table(client_rows)
