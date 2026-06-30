@@ -735,26 +735,7 @@ def make_portfolio_tab():
                 dbc.Col(make_metric_card("ROI Reached", "metric-roi-reached",      "bi-trophy",         "projects fully paid off"),xs=12, sm=4, md=True, className="mb-3"),
             ], className="mb-4"),
 
-            # Sort presets
-            html.Div([
-                html.Span("Sort by:", style={"fontSize": "12px", "color": "#888", "fontWeight": "600",
-                                             "marginRight": "10px", "lineHeight": "30px"}),
-                *[
-                    dbc.Button(label, id={"type": "sort-btn", "key": key}, size="sm", outline=True,
-                               color="info", className="me-2 mb-2",
-                               style={"borderRadius": "20px", "fontSize": "12px",
-                                      "--bs-btn-color": BRAND, "--bs-btn-border-color": BRAND,
-                                      "--bs-btn-hover-bg": BRAND, "--bs-btn-active-bg": BRAND})
-                    for key, label in [
-                        ("default",      "Default"),
-                        ("drop",         "Biggest Drop"),
-                        ("low_usage",    "Lowest Usage"),
-                        ("high_savings", "Highest Savings"),
-                        ("roi_closest",  "Closest to ROI"),
-                    ]
-                ],
-            ], style={"marginBottom": "12px", "display": "flex", "flexWrap": "wrap", "alignItems": "center"}),
-            dcc.Store(id="sort-preset", data="default"),
+            dcc.Store(id="client-sort-store", data={}),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -1207,36 +1188,23 @@ def update_filter_options(store_data):
 
 
 # ---------------------------------------------------------------------------
-# 3a. Sort preset selection — clientside, instant
+# 3a. Per-client sort — clientside, instant
 # ---------------------------------------------------------------------------
 app.clientside_callback(
     """
-    function(n_clicks_list, current) {
+    function(n_clicks_list, current_sorts) {
         var triggered = window.dash_clientside.callback_context.triggered;
-        if (!triggered || triggered.length === 0) return current || 'default';
+        if (!triggered || triggered.length === 0) return current_sorts || {};
         var id = JSON.parse(triggered[0].prop_id.split('.')[0]);
-        return id.key;
+        var updated = Object.assign({}, current_sorts);
+        updated[id.client] = id.key;
+        return updated;
     }
     """,
-    Output("sort-preset", "data"),
-    Input({"type": "sort-btn", "key": dash.ALL}, "n_clicks"),
-    State("sort-preset", "data"),
+    Output("client-sort-store", "data"),
+    Input({"type": "client-sort-btn", "client": dash.ALL, "key": dash.ALL}, "n_clicks"),
+    State("client-sort-store", "data"),
     prevent_initial_call=True,
-)
-
-# Highlight active sort button
-app.clientside_callback(
-    """
-    function(preset, n_list) {
-        var keys = ['default','drop','low_usage','high_savings','roi_closest'];
-        return keys.map(function(k) { return k === preset; });
-    }
-    """,
-    [Output({"type": "sort-btn", "key": k}, "active")
-     for k in ["default", "drop", "low_usage", "high_savings", "roi_closest"]],
-    Input("sort-preset", "data"),
-    Input({"type": "sort-btn", "key": dash.ALL}, "n_clicks"),
-    prevent_initial_call=False,
 )
 
 
@@ -1260,9 +1228,9 @@ _SORT_KEYS = {
     Input("filter-project", "value"),
     Input("filter-activity", "value"),
     Input("filter-roi-status", "value"),
-    Input("sort-preset", "data"),
+    Input("client-sort-store", "data"),
 )
-def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, sort_preset):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts):
     df = df_from_store(store_data)
     if df.empty:
         return []
@@ -1279,34 +1247,64 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
     df = _apply_tag_filter(df, roi_filter, logic="and")
 
     _, all_rows = build_grid_data(df)
+    client_sorts = client_sorts or {}
 
-    # Build per-client row lookup
     rows_by_client = {}
     for r in all_rows:
         rows_by_client.setdefault(r.get("Client"), []).append(r)
 
     clients = list(dict.fromkeys(r.get("Client") for r in all_rows))
 
-    # Sort client sections by aggregate metric
-    sort_fn = _SORT_KEYS.get(sort_preset or "default")
-    if sort_fn:
-        def _client_key(c):
-            client_rows = rows_by_client.get(c, [])
-            vals = [sort_fn(r) for r in client_rows]
-            return min(vals) if vals else 0  # min because sort_fn already negates for desc sorts
-        clients = sorted(clients, key=_client_key)
+    _SORT_LABELS = [
+        ("default",      "Default"),
+        ("drop",         "Biggest Drop"),
+        ("low_usage",    "Lowest Usage"),
+        ("high_savings", "Highest Savings"),
+        ("roi_closest",  "Closest to ROI"),
+    ]
 
     accordion_items = []
     for client in clients:
         client_rows   = rows_by_client.get(client, [])
+        active_sort   = client_sorts.get(client, "default")
+        sort_fn       = _SORT_KEYS.get(active_sort)
+        if sort_fn:
+            client_rows = sorted(client_rows, key=sort_fn)
+
         client_df_sub = df[df["CLIENT"] == client]
         summary       = _build_client_summary(client_df_sub)
         table         = build_client_table(client_rows)
         toggle, collapse = _build_client_charts(client_df_sub, client)
+
+        sort_btns = html.Div([
+            html.Span("Sort:", style={"fontSize": "11px", "color": "#aaa",
+                                      "fontWeight": "600", "marginRight": "8px", "lineHeight": "26px"}),
+            *[
+                dbc.Button(
+                    label,
+                    id={"type": "client-sort-btn", "client": client, "key": key},
+                    size="sm",
+                    outline=(active_sort != key),
+                    color="info",
+                    className="me-1",
+                    style={
+                        "borderRadius": "20px", "fontSize": "11px", "padding": "2px 10px",
+                        "--bs-btn-color": BRAND, "--bs-btn-border-color": BRAND,
+                        "--bs-btn-hover-bg": BRAND, "--bs-btn-active-bg": BRAND,
+                        "--bs-btn-bg": BRAND if active_sort == key else "transparent",
+                        "color": "white" if active_sort == key else BRAND,
+                    },
+                )
+                for key, label in _SORT_LABELS
+            ],
+        ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap",
+                  "marginBottom": "10px", "marginTop": "4px"})
+
         accordion_items.append(
             dbc.AccordionItem(
                 html.Div([
                     summary,
+                    sort_btns,
                     html.Div(table, style={"overflowX": "auto"}),
                     toggle,
                     collapse,
