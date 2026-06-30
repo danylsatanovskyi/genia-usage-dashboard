@@ -461,22 +461,27 @@ def _build_client_charts(client_df, client_id):
     labels         = [lbl for _, lbl in months_ordered]
     usage_totals   = []
     savings_totals = []
+    hours_totals   = []
 
     for month_name, _ in months_ordered:
         u_total = 0.0
         s_total = 0.0
+        h_total = 0.0
         if month_name in client_df.columns:
             for _, row in client_df.iterrows():
                 u     = _safe_num(row.get(month_name))
                 mins  = _safe_num(row.get("Minutes Saved per usage"))
                 rate  = _safe_num(row.get("Client Hourly Rate"))
                 u_total += u
-                s_total += u * mins / 60 * rate
+                h_total += u * mins / 60
+                s_total += h_total * rate
         usage_totals.append(u_total)
         savings_totals.append(s_total)
+        hours_totals.append(h_total)
 
     max_u = max(usage_totals,   default=0)
     max_s = max(savings_totals, default=0)
+    max_h = max(hours_totals,   default=0)
 
     usage_fig = go.Figure(go.Bar(
         x=labels, y=usage_totals,
@@ -521,10 +526,28 @@ def _build_client_charts(client_df, client_id):
         },
     )
 
+    hours_fig = go.Figure(go.Bar(
+        x=labels, y=hours_totals,
+        marker_color=[BRAND if v == max_h else "#80e0e6" for v in hours_totals],
+        text=[fmt_hours(v) if v > 0 else "" for v in hours_totals],
+        textposition="outside", cliponaxis=False,
+        textfont={"size": 9, "color": DARK},
+    ))
+    hours_fig.update_layout(
+        title={"text": "Hours Saved (all projects)", "font": {"size": 11, "color": "#888"}, "x": 0.01},
+        margin={"l": 10, "r": 10, "t": 30, "b": 20},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False, "rangemode": "tozero",
+               "range": [0, max_h * 1.35] if max_h > 0 else None},
+        xaxis={"showgrid": False, "tickfont": {"size": 9}},
+        height=180, showlegend=False,
+    )
+
     collapse = dbc.Collapse(
         dbc.Row([
-            dbc.Col(dcc.Graph(figure=usage_fig,   config={"displayModeBar": False}), xs=12, md=6),
-            dbc.Col(dcc.Graph(figure=savings_fig, config={"displayModeBar": False}), xs=12, md=6),
+            dbc.Col(dcc.Graph(figure=usage_fig,   config={"displayModeBar": False}), xs=12, md=4),
+            dbc.Col(dcc.Graph(figure=savings_fig, config={"displayModeBar": False}), xs=12, md=4),
+            dbc.Col(dcc.Graph(figure=hours_fig,   config={"displayModeBar": False}), xs=12, md=4),
         ], style={"marginTop": "6px", "marginBottom": "4px"}),
         id={"type": "client-charts-collapse", "client": client_id},
         is_open=False,
