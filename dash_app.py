@@ -7,7 +7,6 @@ import os
 import json
 import math
 import secrets
-from urllib.parse import urlencode
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -16,8 +15,7 @@ import dash
 from dash import dcc, html, Input, Output, State, ctx, no_update
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
-from flask import session, redirect, request, render_template_string, url_for
-from authlib.integrations.flask_client import OAuth
+from flask import session, redirect, request, render_template_string
 
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY, COMPANY_CONFIGS
@@ -865,53 +863,112 @@ app = dash.Dash(
 server = app.server   # for WSGI / Gunicorn
 
 # ---------------------------------------------------------------------------
-# Authentication — Auth0
+# Authentication
 # ---------------------------------------------------------------------------
 server.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
-AUTH0_DOMAIN        = os.getenv('AUTH0_DOMAIN', '')
-AUTH0_CLIENT_ID     = os.getenv('AUTH0_CLIENT_ID', '')
-AUTH0_CLIENT_SECRET = os.getenv('AUTH0_CLIENT_SECRET', '')
-APP_URL             = os.getenv('APP_URL', 'http://localhost:8050')
+DASHBOARD_USERNAME = os.getenv('DASHBOARD_USERNAME', 'admin')
+DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
 
-oauth = OAuth(server)
-auth0 = oauth.register(
-    'auth0',
-    client_id=AUTH0_CLIENT_ID,
-    client_secret=AUTH0_CLIENT_SECRET,
-    client_kwargs={'scope': 'openid profile email'},
-    server_metadata_url=f'https://{AUTH0_DOMAIN}/.well-known/openid-configuration',
-)
+_LOGIN_HTML = """<!DOCTYPE html>
+<html>
+<head>
+  <title>Genia Dashboard — Sign In</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'Segoe UI', sans-serif;
+      background: #f0fafb;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: white; border-radius: 20px;
+      padding: 44px 40px; width: 100%; max-width: 400px;
+      box-shadow: 0 8px 40px rgba(0,196,206,0.12), 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .logo-wrap {
+      background: white; border-radius: 12px;
+      padding: 14px 18px; text-align: center; margin-bottom: 28px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .logo-wrap img { max-height: 52px; max-width: 160px; }
+    h1 { font-size: 21px; font-weight: 800; color: #13100d; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: #aaa; margin-bottom: 28px; }
+    label {
+      display: block; font-size: 11px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;
+    }
+    input[type=text], input[type=password] {
+      width: 100%; padding: 10px 14px; margin-bottom: 18px;
+      border: 1.5px solid #e8e8e8; border-radius: 10px;
+      font-size: 14px; outline: none; transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    input:focus { border-color: #00c4ce; }
+    button {
+      width: 100%; padding: 13px; margin-top: 4px;
+      background: #00c4ce; color: white; border: none;
+      border-radius: 12px; font-size: 14px; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.2px; font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.88; }
+    .error {
+      background: #fff0f0; color: #c62828; border: 1px solid #fdd;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 13px; margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-wrap">
+      <img src="https://genia.co/wp-content/uploads/2022/10/logo_genia.svg" alt="Genia">
+    </div>
+    <h1>Sign in</h1>
+    <p class="sub">Genia Usage Dashboard</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="POST" action="/login">
+      <label>Username</label>
+      <input type="text" name="username" autocomplete="username" autofocus>
+      <label>Password</label>
+      <input type="password" name="password" autocomplete="current-password">
+      <button type="submit">Continue</button>
+    </form>
+  </div>
+</body>
+</html>"""
 
 
-@server.route('/login')
+@server.route('/login', methods=['GET', 'POST'])
 def login():
-    return auth0.authorize_redirect(redirect_uri=f'{APP_URL}/callback')
-
-
-@server.route('/callback')
-def callback():
-    token = auth0.authorize_access_token()
-    session['user'] = token['userinfo']
-    return redirect('/')
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        if username == DASHBOARD_USERNAME and password == DASHBOARD_PASSWORD:
+            session['authenticated'] = True
+            return redirect(request.args.get('next', '/'))
+        error = 'Invalid username or password.'
+    return render_template_string(_LOGIN_HTML, error=error)
 
 
 @server.route('/logout')
 def logout():
     session.clear()
-    params = urlencode({'returnTo': APP_URL, 'client_id': AUTH0_CLIENT_ID})
-    return redirect(f'https://{AUTH0_DOMAIN}/v2/logout?{params}')
+    return redirect('/login')
 
 
 @server.before_request
 def require_login():
-    public = ('/login', '/callback', '/static')
-    if any(request.path.startswith(p) for p in public):
+    if request.path.startswith('/login') or request.path.startswith('/static'):
         return
-    if not session.get('user'):
+    if not session.get('authenticated'):
         if request.path.startswith('/_dash'):
             return 'Unauthorized', 401
-        return redirect('/login')
+        return redirect(f'/login?next={request.path}')
 
 
 app.layout = html.Div(
