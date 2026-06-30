@@ -95,14 +95,14 @@ def _build_alert_email(row, status, dashboard_url):
 
         <!-- Header -->
         <tr>
-          <td style="background:{DARK}; padding: 24px 32px;">
-            <span style="font-size: 20px; font-weight: 800; color: {BRAND}; letter-spacing: -0.5px;">genia</span>
-            <span style="font-size: 13px; color: #888; margin-left: 12px;">Usage Dashboard</span>
+          <td style="background:{BRAND}; padding: 20px 32px;">
+            <span style="font-size: 20px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">genia</span>
+            <span style="font-size: 13px; color: rgba(255,255,255,0.7); margin-left: 12px;">Usage Dashboard</span>
           </td>
         </tr>
 
         <!-- Accent bar -->
-        <tr><td style="background:{accent}; height:4px;"></td></tr>
+        <tr><td style="background:{accent}; height:3px;"></td></tr>
 
         <!-- Body -->
         <tr>
