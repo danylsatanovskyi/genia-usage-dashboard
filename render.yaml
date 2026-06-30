@@ -29,3 +29,29 @@ services:
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
+
+  - type: cron
+    name: genia-alerts-cron
+    runtime: python
+    schedule: "0 9 * * 1-5"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run_alerts.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SMTP_SERVER
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: ALERT_FROM_EMAIL
+        sync: false
+      - key: ALERT_TO_EMAILS
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false

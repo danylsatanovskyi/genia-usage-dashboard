@@ -8,6 +8,7 @@ import json
 import math
 import secrets
 import numpy as np
+from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -1376,6 +1377,46 @@ def _build_modal_title(client, project, df):
     ])
 
 
+def _load_alert_state(project_key):
+    """Return (last_alert_status, last_alert_sent) from Supabase, or (None, None)."""
+    try:
+        rows = _sb().table("project_metadata") \
+                    .select("last_alert_status,last_alert_sent") \
+                    .eq("key", project_key).execute().data
+        if rows:
+            r = rows[0]
+            return r.get("last_alert_status"), r.get("last_alert_sent")
+    except Exception:
+        pass
+    return None, None
+
+
+def _alert_banner(project_key):
+    """Small info strip shown at top of modal with last-alert info."""
+    status, sent_at = _load_alert_state(project_key)
+    if not status or not sent_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+        date_str = dt.strftime("%b %d, %Y")
+    except Exception:
+        date_str = sent_at[:10]
+    color = "#e65100" if status == "Usage Dropped" else "#d32f2f"
+    return html.Div(
+        [
+            html.Span("📧", style={"marginRight": "6px"}),
+            html.Span(f"Alert sent on {date_str}  ·  ", style={"fontWeight": "600"}),
+            html.Span(status, style={"color": color, "fontWeight": "700"}),
+        ],
+        style={
+            "background": "#fff8f0", "border": f"1px solid {color}",
+            "borderRadius": "8px", "padding": "8px 14px",
+            "fontSize": "12px", "color": "#555",
+            "marginBottom": "16px",
+        },
+    )
+
+
 def _build_modal_body(client, project, df):
     """Build the full modal body. Hits Supabase for timeseries. Returns (body, raw_store)."""
     mask = (df["CLIENT"] == client) & (df["PROJECT"] == project)
@@ -1519,11 +1560,14 @@ def _build_modal_body(client, project, df):
                  style={"border": "none", "boxShadow": "0 1px 4px rgba(0,0,0,0.07)", "borderRadius": "10px"}),
     ], style={"padding": "20px 4px 4px 4px"}))
 
-    body = dbc.Tabs(
+    tabs = dbc.Tabs(
         [tab_usage, tab_roi, tab_hours],
         active_tab="tab-usage",
         style={"borderBottom": f"2px solid {BRAND}"},
     )
+    project_key = f"{client}_{project}"
+    banner = _alert_banner(project_key)
+    body = html.Div([banner, tabs] if banner else [tabs])
     return body, raw_store
 
 
