@@ -9,3 +9,5 @@ dash-bootstrap-components
 dash-ag-grid
 gunicorn
 numpy
+authlib
+requests

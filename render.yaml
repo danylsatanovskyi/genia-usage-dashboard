@@ -25,7 +25,11 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
-      - key: DASHBOARD_USERNAME
+      - key: AUTH0_DOMAIN
         sync: false
-      - key: DASHBOARD_PASSWORD
+      - key: AUTH0_CLIENT_ID
+        sync: false
+      - key: AUTH0_CLIENT_SECRET
+        sync: false
+      - key: APP_URL
         sync: false
