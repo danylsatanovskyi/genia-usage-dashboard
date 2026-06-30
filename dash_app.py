@@ -910,7 +910,7 @@ _LOGIN_HTML = """<!DOCTYPE html>
       display: block; font-size: 11px; font-weight: 700; color: #888;
       text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;
     }
-    input[type=text], input[type=password] {
+    input[type=password] {
       width: 100%; padding: 10px 14px; margin-bottom: 18px;
       border: 1.5px solid #e8e8e8; border-radius: 10px;
       font-size: 14px; outline: none; transition: border-color 0.15s;
@@ -941,10 +941,8 @@ _LOGIN_HTML = """<!DOCTYPE html>
     <p class="sub">Genia Usage Dashboard</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="POST" action="/login">
-      <label>Username</label>
-      <input type="text" name="username" autocomplete="off" autofocus>
       <label>Password</label>
-      <input type="password" name="password" autocomplete="off">
+      <input type="password" name="password" autocomplete="off" autofocus>
       <button type="submit">Continue</button>
     </form>
   </div>
@@ -956,12 +954,11 @@ _LOGIN_HTML = """<!DOCTYPE html>
 def login():
     error = None
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        if username == DASHBOARD_USERNAME and password == DASHBOARD_PASSWORD:
+        if password == DASHBOARD_PASSWORD:
             session['authenticated'] = True
             return redirect(request.args.get('next', '/'))
-        error = 'Invalid username or password.'
+        error = 'Incorrect password.'
     return render_template_string(_LOGIN_HTML, error=error)
 
 
