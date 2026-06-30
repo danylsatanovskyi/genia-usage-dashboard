@@ -890,10 +890,11 @@ _LOGIN_HTML = """<!DOCTYPE html>
       box-shadow: 0 8px 40px rgba(0,196,206,0.12), 0 2px 8px rgba(0,0,0,0.06);
     }
     .logo-wrap {
-      background: #00c4ce; border-radius: 14px;
-      padding: 16px 20px; text-align: center; margin-bottom: 28px;
+      background: white; border-radius: 12px;
+      padding: 14px 18px; text-align: center; margin-bottom: 28px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
-    .logo-wrap img { max-height: 48px; max-width: 160px; }
+    .logo-wrap img { max-height: 52px; max-width: 160px; }
     h1 { font-size: 21px; font-weight: 800; color: #13100d; margin-bottom: 4px; }
     .sub { font-size: 13px; color: #aaa; margin-bottom: 28px; }
     label {
