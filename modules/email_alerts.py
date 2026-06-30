@@ -176,8 +176,9 @@ def check_and_send_alerts(df, smtp_config, alert_config, sb):
         roi_status      = row.get("roi_status",      "") or ""
         activity_status = row.get("activity_status", "") or ""
         current_status  = None
-        if roi_status in BAD_STATUSES:
-            current_status = roi_status
+        # roi_status can be "Usage Dropped + Below Mo. Target" — check with startswith
+        if "Usage Dropped" in roi_status:
+            current_status = "Usage Dropped"
         elif activity_status in BAD_STATUSES:
             current_status = activity_status
 
