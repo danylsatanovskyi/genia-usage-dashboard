@@ -472,9 +472,10 @@ def _build_client_charts(client_df, client_id):
                 u     = _safe_num(row.get(month_name))
                 mins  = _safe_num(row.get("Minutes Saved per usage"))
                 rate  = _safe_num(row.get("Client Hourly Rate"))
+                h     = u * mins / 60
                 u_total += u
-                h_total += u * mins / 60
-                s_total += h_total * rate
+                h_total += h
+                s_total += h * rate
         usage_totals.append(u_total)
         savings_totals.append(s_total)
         hours_totals.append(h_total)
