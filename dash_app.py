@@ -456,7 +456,7 @@ def _build_client_charts(client_df, client_id):
     for i in range(11, -1, -1):
         idx  = (current_month_idx - i) % 12
         year = now.year if idx <= current_month_idx else now.year - 1
-        months_ordered.append((MONTHS_FR[idx], f"{MONTHS_FR[idx][:3]} '{str(year)[2:]}"))
+        months_ordered.append((MONTHS_FR[idx], f"{MONTHS_FR[idx][:4]} '{str(year)[2:]}"))
 
     labels         = [lbl for _, lbl in months_ordered]
     usage_totals   = []
@@ -1660,7 +1660,7 @@ def _build_modal_body(client, project, df):
         idx        = (current_month_idx - i) % 12
         year       = now.year if idx <= current_month_idx else now.year - 1
         month_name = MONTHS_FR[idx]
-        _mo_labels.append(f"{month_name[:3]} '{str(year)[2:]}")
+        _mo_labels.append(f"{month_name[:4]} '{str(year)[2:]}")
         _mo_hrs.append(_safe_num(row_data.get(month_name, 0)) * minutes_saved / 60)
 
     max_h = max(_mo_hrs, default=0.1)
