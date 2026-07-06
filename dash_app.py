@@ -209,6 +209,10 @@ def build_grid_data(df):
     if df.empty:
         return [], []
 
+    import datetime as _dt
+    _now = _dt.date.today()
+    _ytd_months = MONTHS_FR[:_now.month]  # Jan → current month inclusive
+
     rows = []
     for _, row in df.iterrows():
         curr  = _safe_num(row.get("usage_this_month"))
@@ -229,9 +233,6 @@ def build_grid_data(df):
         proj_cost = _safe_num(row.get("project_cost"))
 
         # YTD: Jan 1 → current month inclusive
-        import datetime as _dt
-        _now = _dt.date.today()
-        _ytd_months = MONTHS_FR[:_now.month]
         _mins_saved  = _safe_num(row.get("Minutes Saved per usage"))
         _hourly_rate = _safe_num(row.get("Client Hourly Rate"))
         _ytd_usage_raw  = sum(_safe_num(row.get(m, 0)) for m in _ytd_months)
@@ -278,7 +279,7 @@ def build_grid_data(df):
             "_client":              row.get("CLIENT", "") or "",
             # YTD (Jan 1 → current month)
             "_ytd_usage":           int(_ytd_usage_raw),
-            "_ytd_hrs":             fmt_hours(_ytd_hrs_raw),
+            "_ytd_hrs":             fmt_hours(_ytd_hrs_raw) if _ytd_hrs_raw else "—",
             "_ytd_saved":           fmt_currency(_ytd_saved_raw) if _ytd_saved_raw else "—",
             # Raw numerics for sort presets
             "_usage_1mo_raw":       curr,
