@@ -228,6 +228,16 @@ def build_grid_data(df):
         prev_hrs = _safe_num(row.get("usage_prev_month")) * _safe_num(row.get("Minutes Saved per usage")) / 60
         proj_cost = _safe_num(row.get("project_cost"))
 
+        # YTD: Jan 1 → current month inclusive
+        import datetime as _dt
+        _now = _dt.date.today()
+        _ytd_months = MONTHS_FR[:_now.month]
+        _mins_saved  = _safe_num(row.get("Minutes Saved per usage"))
+        _hourly_rate = _safe_num(row.get("Client Hourly Rate"))
+        _ytd_usage_raw  = sum(_safe_num(row.get(m, 0)) for m in _ytd_months)
+        _ytd_hrs_raw    = _ytd_usage_raw * _mins_saved / 60
+        _ytd_saved_raw  = _ytd_hrs_raw * _hourly_rate
+
         rows.append({
             "_id":              str(_),
             "_roi_status":      status,
@@ -266,6 +276,10 @@ def build_grid_data(df):
             "_breakeven":           row.get("breakeven_estimate", "") or "",
             "_project_group":       row.get("_project_group", "") or "",
             "_client":              row.get("CLIENT", "") or "",
+            # YTD (Jan 1 → current month)
+            "_ytd_usage":           int(_ytd_usage_raw),
+            "_ytd_hrs":             fmt_hours(_ytd_hrs_raw),
+            "_ytd_saved":           fmt_currency(_ytd_saved_raw) if _ytd_saved_raw else "—",
             # Raw numerics for sort presets
             "_usage_1mo_raw":       curr,
             "_total_saved_raw":     _safe_num(row.get("cumulative_cost_saved")),
@@ -375,23 +389,23 @@ def build_client_table(client_rows):
 
         project_key = f"{row.get('_client', '')}___{row.get('Project', '')}"
 
-        ytd_usage  = row.get("12 mo", "—") or "—"
-        ytd_hrs    = row.get("Hrs 12mo", "—") or "—"
-        ytd_saved  = row.get("Total Saved", "—") or "—"
+        ytd_usage  = row.get("_ytd_usage", "—")
+        ytd_hrs    = row.get("_ytd_hrs",   "—") or "—"
+        ytd_saved  = row.get("_ytd_saved", "—") or "—"
 
         quick_view_row = html.Tr(
             html.Td(
                 html.Div([
                     html.Div([
-                        html.Div("12-mo Usage",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div("YTD Usage",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
                         html.Div(str(ytd_usage),  style={"fontSize": "16px", "fontWeight": "700", "color": "#222"}),
                     ], style={"textAlign": "center", "padding": "0 24px", "borderRight": "1px solid #e0f5f5"}),
                     html.Div([
-                        html.Div("Hours Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div("YTD Hours Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
                         html.Div(str(ytd_hrs),    style={"fontSize": "16px", "fontWeight": "700", "color": "#00838f"}),
                     ], style={"textAlign": "center", "padding": "0 24px", "borderRight": "1px solid #e0f5f5"}),
                     html.Div([
-                        html.Div("Money Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div("YTD Money Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
                         html.Div(str(ytd_saved),  style={"fontSize": "16px", "fontWeight": "700", "color": "#2e7d32"}),
                     ], style={"textAlign": "center", "padding": "0 24px"}),
                 ], style={"display": "flex", "alignItems": "center", "padding": "12px 8px", "background": "#f5fffe"}),
