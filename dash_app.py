@@ -375,11 +375,52 @@ def build_client_table(client_rows):
 
         project_key = f"{row.get('_client', '')}___{row.get('Project', '')}"
 
+        ytd_usage  = row.get("12 mo", "—") or "—"
+        ytd_hrs    = row.get("Hrs 12mo", "—") or "—"
+        ytd_saved  = row.get("Total Saved", "—") or "—"
+
+        quick_view_row = html.Tr(
+            html.Td(
+                html.Div([
+                    html.Div([
+                        html.Div("12-mo Usage",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div(str(ytd_usage),  style={"fontSize": "16px", "fontWeight": "700", "color": "#222"}),
+                    ], style={"textAlign": "center", "padding": "0 24px", "borderRight": "1px solid #e0f5f5"}),
+                    html.Div([
+                        html.Div("Hours Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div(str(ytd_hrs),    style={"fontSize": "16px", "fontWeight": "700", "color": "#00838f"}),
+                    ], style={"textAlign": "center", "padding": "0 24px", "borderRight": "1px solid #e0f5f5"}),
+                    html.Div([
+                        html.Div("Money Saved",  style={"fontSize": "10px", "color": "#888", "marginBottom": "3px", "textTransform": "uppercase", "letterSpacing": "0.4px"}),
+                        html.Div(str(ytd_saved),  style={"fontSize": "16px", "fontWeight": "700", "color": "#2e7d32"}),
+                    ], style={"textAlign": "center", "padding": "0 24px"}),
+                ], style={"display": "flex", "alignItems": "center", "padding": "12px 8px", "background": "#f5fffe"}),
+                colSpan=9,
+                style={"padding": "0", "borderBottom": "1px solid #e0f5f5"},
+            ),
+            id={"type": "quick-view-row", "index": project_key},
+            style={"display": "none"},
+        )
+
         data_rows.append(html.Tr([
             html.Td(
-                row.get("Project", ""),
+                html.Div([
+                    html.Button(
+                        "YTD",
+                        id={"type": "quick-view-btn", "index": project_key},
+                        n_clicks=0,
+                        style={
+                            "background": "none", "border": f"1px solid {BRAND}",
+                            "borderRadius": "4px", "cursor": "pointer",
+                            "color": BRAND, "fontSize": "9px", "fontWeight": "700",
+                            "padding": "1px 5px", "marginRight": "8px",
+                            "letterSpacing": "0.3px", "flexShrink": "0",
+                        },
+                    ),
+                    row.get("Project", ""),
+                ], style={"display": "flex", "alignItems": "center"}),
                 style={**td_base, "fontWeight": "500",
-                       "paddingLeft": "32px" if hide_roi else "14px",
+                       "paddingLeft": "32px" if hide_roi else "8px",
                        "borderLeft": f"4px solid {border_color}"},
             ),
             html.Td(row.get("Activated", "") or "—",
@@ -405,6 +446,7 @@ def build_client_table(client_rows):
                 style={**td_base, "textAlign": "right", "width": "80px"},
             ),
         ]))
+        data_rows.append(quick_view_row)
 
     return html.Table(
         [headers, html.Tbody(data_rows)],
@@ -1376,6 +1418,30 @@ app.clientside_callback(
     Output({"type": "client-charts-collapse", "client": dash.MATCH}, "is_open"),
     Input({"type": "client-charts-toggle",    "client": dash.MATCH}, "n_clicks"),
     State({"type": "client-charts-collapse",  "client": dash.MATCH}, "is_open"),
+    prevent_initial_call=True,
+)
+
+app.clientside_callback(
+    """
+    function(n_clicks_list, current_styles) {
+        var ctx = dash_clientside.callback_context;
+        if (!ctx.triggered || !ctx.triggered.length) return current_styles;
+        var triggered_id = JSON.parse(ctx.triggered[0].prop_id.split('.')[0]);
+        var target_idx = triggered_id.index;
+        return current_styles.map(function(style, i) {
+            if (ctx.outputs_list[i].id.index === target_idx) {
+                var isHidden = !style || style.display === 'none';
+                var newStyle = Object.assign({}, style || {});
+                newStyle.display = isHidden ? 'table-row' : 'none';
+                return newStyle;
+            }
+            return style;
+        });
+    }
+    """,
+    Output({"type": "quick-view-row", "index": dash.ALL}, "style"),
+    Input({"type": "quick-view-btn",  "index": dash.ALL}, "n_clicks"),
+    State({"type": "quick-view-row",  "index": dash.ALL}, "style"),
     prevent_initial_call=True,
 )
 
