@@ -1532,7 +1532,6 @@ def _alert_banner(project_key):
     color = "#c62828" if status == "Usage Dropped" else "#d32f2f"
     return html.Div(
         [
-            html.Span("📧", style={"marginRight": "6px"}),
             html.Span(f"Alert sent on {date_str}  ·  ", style={"fontWeight": "600"}),
             html.Span(status, style={"color": color, "fontWeight": "700"}),
         ],
