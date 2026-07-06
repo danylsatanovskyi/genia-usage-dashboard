@@ -1529,7 +1529,7 @@ def _alert_banner(project_key):
         date_str = dt.strftime("%b %d, %Y")
     except Exception:
         date_str = sent_at[:10]
-    color = "#e65100" if status == "Usage Dropped" else "#d32f2f"
+    color = "#c62828" if status == "Usage Dropped" else "#d32f2f"
     return html.Div(
         [
             html.Span("📧", style={"marginRight": "6px"}),
@@ -1537,7 +1537,7 @@ def _alert_banner(project_key):
             html.Span(status, style={"color": color, "fontWeight": "700"}),
         ],
         style={
-            "background": "#fff8f0", "border": f"1px solid {color}",
+            "background": "#fdf2f2", "border": f"1px solid {color}",
             "borderRadius": "8px", "padding": "8px 14px",
             "fontSize": "12px", "color": "#555",
             "marginBottom": "16px",
