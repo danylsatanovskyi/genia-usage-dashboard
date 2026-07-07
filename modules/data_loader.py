@@ -147,7 +147,7 @@ def load_data(supabase, company_configs, project_metadata=None):
                     worksheet_name = company_config.get('worksheet_name', company_name)
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
                         display_name = split_display_names.get(str(sub_val), str(sub_val))
-                        sub_key = f"{worksheet_name}_{display_name}"
+                        sub_key = f"{worksheet_name}_{sub_val}"
                         sub_meta = project_metadata.get(sub_key, metadata_entry)
                         sub_row = {
                             'COMPANY': company_name,

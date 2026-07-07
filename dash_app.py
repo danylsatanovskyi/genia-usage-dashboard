@@ -2026,7 +2026,7 @@ def render_settings_accordion(store_data):
             split_values = proj_cfg.get("split_values")
             split_display_names = proj_cfg.get("split_display_names", {})
             entries = (
-                [(split_display_names.get(sv, sv), f"{worksheet}_{split_display_names.get(sv, sv)}") for sv in split_values]
+                [(split_display_names.get(sv, sv), f"{worksheet}_{sv}") for sv in split_values]
                 if split_values
                 else [(project_name, f"{worksheet}_{project_name}")]
             )
