@@ -285,6 +285,7 @@ def build_grid_data(df):
             "_usage_1mo_raw":       curr,
             "_total_saved_raw":     _safe_num(row.get("cumulative_cost_saved")),
             "_usage_drop_pct_raw":  _safe_num(row.get("usage_drop_percent")),
+            "_split_db_value":      row.get("_split_db_value", "") or "",
             # Boolean ROI tags for multi-chip column
             "_tag_roi_reached":  bool(row.get("tag_roi_reached", False)),
             "_tag_usage_dropped":bool(row.get("tag_usage_dropped", False)),
@@ -1638,8 +1639,9 @@ def _build_modal_body(client, project, df):
 
     row = all_rows[0]
     project_group = row.get("_project_group", project)
+    db_value = row.get("_split_db_value") or project
 
-    raw_store     = _fetch_project_timeseries(client, project, project_group) or {}
+    raw_store     = _fetch_project_timeseries(client, db_value, project_group) or {}
     minutes_saved = _safe_num(matching_df.iloc[0].get("Minutes Saved per usage"))
     hourly_rate   = _safe_num(matching_df.iloc[0].get("Client Hourly Rate"))
     raw_store['minutes_saved'] = minutes_saved
@@ -2022,8 +2024,9 @@ def render_settings_accordion(store_data):
             # For split projects, show one row per sub-value (each has its own metadata).
             # For regular projects, show one row for the project itself.
             split_values = proj_cfg.get("split_values")
+            split_display_names = proj_cfg.get("split_display_names", {})
             entries = (
-                [(sv, f"{worksheet}_{sv}") for sv in split_values]
+                [(split_display_names.get(sv, sv), f"{worksheet}_{split_display_names.get(sv, sv)}") for sv in split_values]
                 if split_values
                 else [(project_name, f"{worksheet}_{project_name}")]
             )

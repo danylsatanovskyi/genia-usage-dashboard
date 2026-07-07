@@ -27,21 +27,21 @@
     "monthly_roi_goal": 0.0,
     "month_activated": "2025-08"
   },
-  "HEMA-QUEBEC_hemy": {
+  "HEMA-QUEBEC_Hemy Reseaux Sociaux": {
     "investment": 14775.0,
     "minutes_saved_per_usage": 10.0,
     "client_hourly_rate": 50.0,
     "monthly_roi_goal": null,
     "month_activated": "2025-03"
   },
-  "HEMA-QUEBEC_email_agent": {
+  "HEMA-QUEBEC_Hemy Agent Courriel": {
     "investment": 3499.0,
     "minutes_saved_per_usage": 10.0,
     "client_hourly_rate": 50.0,
     "monthly_roi_goal": null,
     "month_activated": "2025-03"
   },
-  "HEMA-QUEBEC_phone_agent": {
+  "HEMA-QUEBEC_Hemy Agent Telephonique": {
     "investment": 3499.0,
     "minutes_saved_per_usage": 10.0,
     "client_hourly_rate": 50.0,

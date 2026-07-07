@@ -104,6 +104,7 @@ def load_data(supabase, company_configs, project_metadata=None):
                 split_financial_row = project_config.get('split_financial_row', '').lower()
 
                 split_values = project_config.get('split_values')
+                split_display_names = project_config.get('split_display_names', {})
 
                 if split_by_field and split_by_field in records_df.columns:
                     all_sub_values = records_df[split_by_field].dropna().unique()
@@ -145,12 +146,14 @@ def load_data(supabase, company_configs, project_metadata=None):
                     # Falls back to the parent project entry if no sub-specific entry exists.
                     worksheet_name = company_config.get('worksheet_name', company_name)
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
-                        sub_key = f"{worksheet_name}_{sub_val}"
+                        display_name = split_display_names.get(str(sub_val), str(sub_val))
+                        sub_key = f"{worksheet_name}_{display_name}"
                         sub_meta = project_metadata.get(sub_key, metadata_entry)
                         sub_row = {
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
-                            'PROJECT': str(sub_val),
+                            'PROJECT': display_name,
+                            '_split_db_value': str(sub_val),
                             'Investment': sub_meta.get('investment'),
                             'Monthly ROI Goal': sub_meta.get('monthly_roi_goal'),
                             'Client Hourly Rate': sub_meta.get('client_hourly_rate'),

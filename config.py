@@ -76,6 +76,11 @@ COMPANY_CONFIGS = {
                 "value_type": "boolean",
                 "split_by_field": "project",
                 "split_values": ["hemy", "email_agent", "phone_agent"],
+                "split_display_names": {
+                    "hemy": "Hemy Reseaux Sociaux",
+                    "email_agent": "Hemy Agent Courriel",
+                    "phone_agent": "Hemy Agent Telephonique",
+                },
                 "investment": None,
                 "monthly_roi_goal": None,
                 "hourly_rate": None,
