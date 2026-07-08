@@ -1559,10 +1559,9 @@ def _fetch_project_timeseries(client, project, project_group):
         daily.columns = ['date', 'count']
 
         # Inject manual monthly overrides as a single synthetic record on the 1st of each month
-        from modules.data_loader import MONTHS_FR
         manual_overrides = proj_cfg.get('manual_monthly_overrides', {})
         if manual_overrides:
-            today = date.today()
+            today = datetime.now()
             extra_rows = []
             for month_name, count in manual_overrides.items():
                 if month_name in MONTHS_FR:
