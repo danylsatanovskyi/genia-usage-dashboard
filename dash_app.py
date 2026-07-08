@@ -1557,6 +1557,23 @@ def _fetch_project_timeseries(client, project, project_group):
         raw['_date'] = raw[date_col].dt.date.astype(str)
         daily = raw.groupby('_date')['_u'].sum().reset_index()
         daily.columns = ['date', 'count']
+
+        # Inject manual monthly overrides as a single synthetic record on the 1st of each month
+        from modules.data_loader import MONTHS_FR
+        manual_overrides = proj_cfg.get('manual_monthly_overrides', {})
+        if manual_overrides:
+            today = date.today()
+            extra_rows = []
+            for month_name, count in manual_overrides.items():
+                if month_name in MONTHS_FR:
+                    month_num = MONTHS_FR.index(month_name) + 1
+                    year = today.year if month_num <= today.month else today.year - 1
+                    synthetic_date = f"{year}-{month_num:02d}-01"
+                    extra_rows.append({'date': synthetic_date, 'count': count})
+            if extra_rows:
+                daily = pd.concat([daily, pd.DataFrame(extra_rows)], ignore_index=True)
+                daily = daily.groupby('date')['count'].sum().reset_index()
+
         daily = daily.sort_values('date')
 
         return {'daily': daily.to_dict('records')}
