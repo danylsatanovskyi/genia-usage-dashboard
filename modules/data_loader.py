@@ -96,6 +96,12 @@ def load_data(supabase, company_configs, project_metadata=None):
                     usage_count = _count_usage(month_records[usage_field], value_type, match_value) if usage_field in month_records.columns else 0
                     monthly_usage[month_name] = usage_count
 
+                # Apply manual monthly overrides (historical data not in Supabase)
+                manual_overrides = project_config.get('manual_monthly_overrides', {})
+                for month_name, extra_count in manual_overrides.items():
+                    if month_name in monthly_usage:
+                        monthly_usage[month_name] += extra_count
+
                 project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
                 metadata_entry = project_metadata.get(project_key, {})
                 usage_type_override = "Matched Companies" if (company_name == "TECHO BLOC" and project_name == "MATCHING") else None

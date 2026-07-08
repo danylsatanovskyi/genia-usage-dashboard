@@ -26,7 +26,12 @@ COMPANY_CONFIGS = {
                 "monthly_roi_goal": None,  # TODO: Add monthly target
                 "hourly_rate": None,  # TODO: Add client hourly rate
                 "minutes_saved_per_usage": None,  # TODO: Add time saved per usage
-                "month_activated": None  # TODO: Add activation date (YYYY-MM-DD)
+                "month_activated": None,  # TODO: Add activation date (YYYY-MM-DD)
+                "manual_monthly_overrides": {
+                    "Aout": 47,
+                    "Septembre": 13,
+                    "Octobre": 25,
+                },
             },
             "TABLEAU DE MARGE/CELLSELL": {
                 "supabase_table": "genia_analytics_cellcom_tableaudemarge",
@@ -36,7 +41,11 @@ COMPANY_CONFIGS = {
                 "monthly_roi_goal": None,
                 "hourly_rate": None,
                 "minutes_saved_per_usage": None,
-                "month_activated": None
+                "month_activated": None,
+                "manual_monthly_overrides": {
+                    "Septembre": 20,
+                    "Octobre": 31,
+                },
             },
             "ACCOUNTS PAYABLE": {
                 "supabase_table": "genia_analytics_cellcom_accountspayable",
@@ -46,7 +55,11 @@ COMPANY_CONFIGS = {
                 "monthly_roi_goal": None,
                 "hourly_rate": None,
                 "minutes_saved_per_usage": None,
-                "month_activated": None
+                "month_activated": None,
+                "manual_monthly_overrides": {
+                    "Septembre": 2,
+                    "Octobre": 5,
+                },
             },
         }
     },
