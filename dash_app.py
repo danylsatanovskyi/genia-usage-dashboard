@@ -979,13 +979,15 @@ def make_settings_tab():
                     html.Hr(style={"margin": "20px 0"}),
                     html.H5("Hidden Projects", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
                     html.Div(id="hidden-projects-list"),
-                    dcc.Loading(html.Div([
+                    html.Div([
                         html.Label("Hide a Project:", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
                         dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…", style={"marginBottom": "8px"}),
-                        dbc.Button("Hide Project", id="btn-hide-project", color="warning", size="sm"),
-                        html.Div(id="hide-project-status", style={"marginTop": "10px"}),
-                    ], style={"marginTop": "20px"}), type="circle", color=BRAND,
-                    overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        dcc.Loading(html.Div([
+                            dbc.Button("Hide Project", id="btn-hide-project", color="warning", size="sm"),
+                            html.Div(id="hide-project-status", style={"marginTop": "10px"}),
+                        ]), type="circle", color=BRAND,
+                        overlay_style={"visibility": "visible", "opacity": 0.5}),
+                    ], style={"marginTop": "20px"}),
                 ], md=4),
             ]),
             html.Hr(style={"margin": "36px 0 24px 0"}),
@@ -2498,17 +2500,17 @@ def render_manual_projects_list(_refresh):
     for mp in projects:
         items.append(
             dbc.Alert(
-                [
+                html.Div([
                     html.Div([
                         html.Span(mp["project_name"], style={"fontWeight": "700", "fontSize": "13px"}),
                         html.Span(f"  {mp['client_name']}", style={"color": "#666", "fontSize": "12px"}),
-                    ]),
+                    ], style={"flex": 1}),
                     dbc.Button(
                         "Delete",
                         id={"type": "btn-delete-manual-project", "id": mp["id"]},
-                        color="danger", size="sm", className="float-end",
+                        color="danger", size="sm", style={"flexShrink": 0},
                     ),
-                ],
+                ], style={"display": "flex", "alignItems": "center", "gap": "10px"}),
                 color="light",
                 style={"padding": "8px 12px", "marginBottom": "6px"},
             )
