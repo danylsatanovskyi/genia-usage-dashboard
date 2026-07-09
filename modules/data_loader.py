@@ -489,15 +489,12 @@ def calculate_metrics(df):
         (df['historical_monthly_avg'] + 0.01) * 100
     )
 
-    if prev_col in df.columns and current_col in df.columns:
-        df['usage_prev_month']  = df[prev_col]
-        df['mom_usage_percent'] = (
-            (df['usage_this_month'] - df['usage_prev_month']) /
-            (df['usage_prev_month'] + 0.01) * 100
-        )
-    else:
-        df['usage_prev_month']  = 0
-        df['mom_usage_percent'] = 0
+    # Treat missing prev_col as 0 so MoM color still works when leading zeros were trimmed
+    df['usage_prev_month'] = df[prev_col].fillna(0) if prev_col in df.columns else 0
+    df['mom_usage_percent'] = (
+        (df['usage_this_month'] - df['usage_prev_month']) /
+        (df['usage_prev_month'] + 0.01) * 100
+    )
 
     df['trailing_3mo_monthly_avg_usage'] = df['usage_last_3_months'] / 3
 
