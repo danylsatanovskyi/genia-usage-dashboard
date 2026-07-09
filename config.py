@@ -94,6 +94,18 @@ COMPANY_CONFIGS = {
                     "email_agent": "Hemy Agent Courriel",
                     "phone_agent": "Hemy Agent Telephonique",
                 },
+                # Avg monthly usage (Nov 2025–Jun 2026) injected for Aug/Sep/Oct 2025 (no DB records)
+                "split_manual_monthly_overrides": {
+                    "hemy":        {"Aout": 12, "Septembre": 12, "Octobre": 12},
+                    "email_agent": {"Aout": 141, "Septembre": 141, "Octobre": 141},
+                    "phone_agent": {"Aout": 55, "Septembre": 55, "Octobre": 55},
+                },
+                # Avg × 5 months for Mar–Jul 2025 (outside 12-mo display window, counted in all-time only)
+                "split_manual_historical_extra": {
+                    "hemy": 60,
+                    "email_agent": 705,
+                    "phone_agent": 275,
+                },
                 "investment": None,
                 "monthly_roi_goal": None,
                 "hourly_rate": None,
@@ -104,6 +116,10 @@ COMPANY_CONFIGS = {
                 "supabase_table": "genia_analytics_hemaquebec_calendar",
                 "usage_field": "event_created",
                 "value_type": "boolean",
+                # Avg monthly usage (Nov 2025–Jun 2026) injected for Aug/Sep/Oct 2025 (no DB records)
+                "manual_monthly_overrides": {"Aout": 62, "Septembre": 62, "Octobre": 62},
+                # Avg × 5 months for Mar–Jul 2025 (outside 12-mo display window, counted in all-time only)
+                "manual_historical_extra": 310,
                 "investment": None,
                 "monthly_roi_goal": None,
                 "hourly_rate": None,

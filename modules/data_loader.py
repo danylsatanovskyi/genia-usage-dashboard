@@ -108,6 +108,7 @@ def _load_manual_data(supabase, project_metadata):
                 '_sort_order': 0,
                 '_split_primary': True,
                 'usage_yesterday': usage_yesterday,
+                'usage_all_time': sum(usage_by_date.values()),
             }
             project_row.update(monthly_usage)
             rows.append(project_row)
@@ -232,10 +233,26 @@ def load_data(supabase, company_configs, project_metadata=None):
                     # so individual investments/rates can be configured per sub-project.
                     # Falls back to the parent project entry if no sub-specific entry exists.
                     worksheet_name = company_config.get('worksheet_name', company_name)
+                    split_manual_monthly  = project_config.get('split_manual_monthly_overrides', {})
+                    split_manual_historical = project_config.get('split_manual_historical_extra', {})
+
                     for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
                         display_name = split_display_names.get(str(sub_val), str(sub_val))
                         sub_key = f"{worksheet_name}_{sub_val}"
                         sub_meta = project_metadata.get(sub_key, metadata_entry)
+
+                        # Apply per-sub monthly overrides to display columns
+                        sub_overrides = split_manual_monthly.get(str(sub_val), {})
+                        for month_name, extra_count in sub_overrides.items():
+                            if month_name in sub_monthly:
+                                sub_monthly[month_name] += extra_count
+
+                        # All-time for this sub-project
+                        sub_df_all = records_df[records_df[split_by_field] == sub_val]
+                        sub_all_time = _count_usage(sub_df_all[usage_field], value_type, match_value) if usage_field in sub_df_all.columns else 0
+                        sub_all_time += sum(sub_overrides.values())
+                        sub_all_time += split_manual_historical.get(str(sub_val), 0)
+
                         sub_row = {
                             'COMPANY': company_name,
                             'CLIENT': company_config.get('client_name', company_name),
@@ -252,11 +269,17 @@ def load_data(supabase, company_configs, project_metadata=None):
                             '_hide_roi': True,
                             '_project_group': project_name,
                             '_sort_order': order,
-                            '_split_primary': True,  # each sub-row has its own investment
+                            '_split_primary': True,
+                            'usage_all_time': int(sub_all_time),
                         }
                         sub_row.update(sub_monthly)
                         all_data.append(sub_row)
                 else:
+                    # All-time usage: all DB rows + overrides (no date filter)
+                    all_time_usage = _count_usage(records_df[usage_field], value_type, match_value) if usage_field in records_df.columns else 0
+                    all_time_usage += sum(project_config.get('manual_monthly_overrides', {}).values())
+                    all_time_usage += project_config.get('manual_historical_extra', 0)
+
                     project_row = {
                         'COMPANY': company_name,
                         'CLIENT': company_config.get('client_name', company_name),
@@ -273,6 +296,7 @@ def load_data(supabase, company_configs, project_metadata=None):
                         '_sort_order': 0,
                         '_split_primary': True,
                         'usage_yesterday': usage_yesterday,
+                        'usage_all_time': int(all_time_usage),
                     }
                     project_row.update(monthly_usage)
                     all_data.append(project_row)
@@ -339,7 +363,9 @@ def calculate_metrics(df):
     df['cost_saved_this_month'] = df['time_saved_hours_this_month'] * hourly_rate
     df['cost_saved_3mo'] = df['time_saved_hours_3mo'] * hourly_rate
     df['cost_saved_12mo'] = df['time_saved_hours_12mo'] * hourly_rate
-    df['cumulative_cost_saved'] = df['cost_saved_12mo']
+    # Use all-time usage for cumulative ROI (true since-launch total)
+    all_time_usage = df['usage_all_time'] if 'usage_all_time' in df.columns else df['usage_last_12_months']
+    df['cumulative_cost_saved'] = all_time_usage * minutes_saved / 60 * hourly_rate
 
     project_cost = df['Investment'].fillna(0)
     df['project_cost'] = project_cost
