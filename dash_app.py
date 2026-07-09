@@ -264,7 +264,7 @@ def build_grid_data(df):
 
     import datetime as _dt
     _now = _dt.date.today()
-    _ytd_months = MONTHS_FR[:_now.month]  # Jan → current month inclusive
+    _ytd_months = [f"{MONTHS_FR[i]} {_now.year}" for i in range(_now.month)]  # Jan → current month
 
     rows = []
     for _, row in df.iterrows():
@@ -563,24 +563,33 @@ def _build_client_charts(client_df, client_id):
     now = pd.Timestamp.now()
     current_month_idx = now.month - 1
 
-    months_ordered = []
-    for i in range(11, -1, -1):
-        idx  = (current_month_idx - i) % 12
-        year = now.year if idx <= current_month_idx else now.year - 1
-        months_ordered.append((MONTHS_FR[idx], f"{MONTHS_FR[idx][:4]} '{str(year)[2:]}"))
+    import re as _re
+    _month_re = _re.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    def _parse_mo_col(col):
+        m = _month_re.match(col)
+        if m:
+            mo_num = MONTHS_FR.index(m.group(1)) + 1
+            yr     = int(m.group(2))
+            return (yr, mo_num, col)
+        return None
 
-    labels         = [lbl for _, lbl in months_ordered]
+    _avail = sorted(
+        filter(None, (_parse_mo_col(c) for c in client_df.columns)),
+        key=lambda x: (x[0], x[1]),
+    )
+
+    labels         = [f"{MONTHS_FR[mo-1][:4]} '{str(yr)[2:]}" for (yr, mo, _) in _avail]
     usage_totals   = []
     savings_totals = []
     hours_totals   = []
 
-    for month_name, _ in months_ordered:
+    for yr, mo, col_name in _avail:
         u_total = 0.0
         s_total = 0.0
         h_total = 0.0
-        if month_name in client_df.columns:
+        if col_name in client_df.columns:
             for _, row in client_df.iterrows():
-                u     = _safe_num(row.get(month_name))
+                u     = _safe_num(row.get(col_name))
                 mins  = _safe_num(row.get("Minutes Saved per usage"))
                 rate  = _safe_num(row.get("Client Hourly Rate"))
                 h     = u * mins / 60
@@ -1817,12 +1826,12 @@ def _build_modal_body(client, project, df):
     now = pd.Timestamp.now()
     current_month_idx = now.month - 1
     monthly_savings = {}
-    for i in range(11, -1, -1):
-        idx   = (current_month_idx - i) % 12
-        year  = now.year if idx <= current_month_idx else now.year - 1
-        mname = MONTHS_FR[idx]
-        usage = _safe_num(matching_df.iloc[0].get(mname, 0))
-        monthly_savings[f"{mname} {year}"] = round(usage * minutes_saved / 60 * hourly_rate, 2)
+    import re as _re2
+    _mre = _re2.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    for col in matching_df.columns:
+        if _mre.match(col):
+            usage = _safe_num(matching_df.iloc[0].get(col, 0))
+            monthly_savings[col] = round(usage * minutes_saved / 60 * hourly_rate, 2)
     raw_store['monthly_savings'] = monthly_savings
 
     def _pill(label, value, accent=False):
@@ -1854,8 +1863,8 @@ def _build_modal_body(client, project, df):
     roi_bar   = _build_roi_bar(row)
     breakeven = row.get("_breakeven", "")
 
-    ytd_months = MONTHS_FR[:current_month_idx + 1]
-    row_data   = matching_df.iloc[0]
+    row_data  = matching_df.iloc[0]
+    ytd_months = [f"{MONTHS_FR[i]} {now.year}" for i in range(current_month_idx + 1)]
     ytd_usage  = int(sum(_safe_num(row_data.get(m, 0)) for m in ytd_months))
     ytd_savings = ytd_usage * minutes_saved / 60 * hourly_rate
 
@@ -1903,14 +1912,16 @@ def _build_modal_body(client, project, df):
     hrs_prev_mo_raw = row.get("_hrs_prev_mo", "—")
     hrs_12mo_raw    = row.get("_hrs_12mo",    "—")
 
-    _mo_labels = []
-    _mo_hrs    = []
-    for i in range(11, -1, -1):
-        idx        = (current_month_idx - i) % 12
-        year       = now.year if idx <= current_month_idx else now.year - 1
-        month_name = MONTHS_FR[idx]
-        _mo_labels.append(f"{month_name[:4]} '{str(year)[2:]}")
-        _mo_hrs.append(_safe_num(row_data.get(month_name, 0)) * minutes_saved / 60)
+    import re as _re3
+    _mre3 = _re3.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    _mo_cols_sorted = sorted(
+        ((int(m.group(2)), MONTHS_FR.index(m.group(1)) + 1, col)
+         for col in matching_df.columns
+         for m in [_mre3.match(col)] if m),
+        key=lambda x: (x[0], x[1]),
+    )
+    _mo_labels = [f"{MONTHS_FR[mo-1][:4]} '{str(yr)[2:]}" for (yr, mo, _) in _mo_cols_sorted]
+    _mo_hrs    = [_safe_num(row_data.get(col, 0)) * minutes_saved / 60 for (_, _, col) in _mo_cols_sorted]
 
     max_h = max(_mo_hrs, default=0.1)
     bar_fig = go.Figure(go.Bar(

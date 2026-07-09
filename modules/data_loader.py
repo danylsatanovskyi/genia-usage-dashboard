@@ -80,15 +80,22 @@ def _load_manual_data(supabase, project_metadata):
             usage_yesterday = usage_by_date.get(yesterday, 0)
 
             monthly_usage = {}
-            for month_idx in range(12):
-                month_num = month_idx + 1
-                year = current_year if month_num <= current_month else current_year - 1
-                month_name = MONTHS_FR[month_idx]
+            if usage_by_date:
+                min_d = min(usage_by_date.keys())
+                m_yr, m_mo = min_d.year, min_d.month
+            else:
+                m_yr, m_mo = current_year, current_month
+            while (m_yr, m_mo) <= (current_year, current_month):
+                col_name = f"{MONTHS_FR[m_mo - 1]} {m_yr}"
                 count = sum(
                     v for d, v in usage_by_date.items()
-                    if d.month == month_num and d.year == year
+                    if d.month == m_mo and d.year == m_yr
                 )
-                monthly_usage[month_name] = count
+                monthly_usage[col_name] = count
+                m_mo += 1
+                if m_mo > 12:
+                    m_mo = 1
+                    m_yr += 1
 
             metadata_entry = project_metadata.get(project_key, {})
 
@@ -167,22 +174,36 @@ def load_data(supabase, company_configs, project_metadata=None):
 
                 current_year = date.today().year
                 current_month = date.today().month
+
+                # Build monthly usage for ALL months with data (not capped at 12)
                 monthly_usage = {}
-                for month_idx in range(12):
-                    month_num = month_idx + 1
-                    year = current_year if month_num <= current_month else current_year - 1
-                    month_name = MONTHS_FR[month_idx]
+                if not records_df.empty:
+                    min_date = records_df[date_col].min()
+                    start_year, start_month = min_date.year, min_date.month
+                else:
+                    start_year, start_month = current_year, current_month
+
+                yr, mo = start_year, start_month
+                while (yr, mo) <= (current_year, current_month):
+                    col_name = f"{MONTHS_FR[mo - 1]} {yr}"
                     month_records = records_df[
-                        (records_df['_month'] == month_num) & (records_df['_year'] == year)
+                        (records_df['_month'] == mo) & (records_df['_year'] == yr)
                     ]
                     usage_count = _count_usage(month_records[usage_field], value_type, match_value) if usage_field in month_records.columns else 0
-                    monthly_usage[month_name] = usage_count
+                    monthly_usage[col_name] = usage_count
+                    mo += 1
+                    if mo > 12:
+                        mo = 1
+                        yr += 1
 
-                # Apply manual monthly overrides (historical data not in Supabase)
+                # Apply manual monthly overrides (infer year using rolling logic for backward compat)
                 manual_overrides = project_config.get('manual_monthly_overrides', {})
                 for month_name, extra_count in manual_overrides.items():
-                    if month_name in monthly_usage:
-                        monthly_usage[month_name] += extra_count
+                    if month_name in MONTHS_FR:
+                        mo_num = MONTHS_FR.index(month_name) + 1
+                        override_year = current_year if mo_num <= current_month else current_year - 1
+                        col_name = f"{month_name} {override_year}"
+                        monthly_usage[col_name] = monthly_usage.get(col_name, 0) + extra_count
 
                 project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
                 metadata_entry = project_metadata.get(project_key, {})
@@ -202,7 +223,7 @@ def load_data(supabase, company_configs, project_metadata=None):
 
                     # Build per-sub-value monthly usage first so we can sum for the total row
                     sub_rows_data = []
-                    total_monthly = {MONTHS_FR[i]: 0 for i in range(12)}
+                    total_monthly = {}
                     total_yesterday = 0
 
                     for sub_val in sub_values:
@@ -215,16 +236,25 @@ def load_data(supabase, company_configs, project_metadata=None):
                         total_yesterday += sub_yesterday
 
                         sub_monthly = {}
-                        for month_idx in range(12):
-                            month_num = month_idx + 1
-                            year = current_year if month_num <= current_month else current_year - 1
-                            month_name = MONTHS_FR[month_idx]
+                        # All months with data for this sub-project
+                        if not sub_df.empty:
+                            sub_min = sub_df[date_col].min()
+                            sub_start_yr, sub_start_mo = sub_min.year, sub_min.month
+                        else:
+                            sub_start_yr, sub_start_mo = current_year, current_month
+                        s_yr, s_mo = sub_start_yr, sub_start_mo
+                        while (s_yr, s_mo) <= (current_year, current_month):
+                            col_name = f"{MONTHS_FR[s_mo - 1]} {s_yr}"
                             month_sub = sub_df[
-                                (sub_df['_month'] == month_num) & (sub_df['_year'] == year)
+                                (sub_df['_month'] == s_mo) & (sub_df['_year'] == s_yr)
                             ]
                             count = _count_usage(month_sub[usage_field], value_type, match_value) if usage_field in month_sub.columns else 0
-                            sub_monthly[month_name] = count
-                            total_monthly[month_name] += count
+                            sub_monthly[col_name] = count
+                            total_monthly[col_name] = total_monthly.get(col_name, 0) + count
+                            s_mo += 1
+                            if s_mo > 12:
+                                s_mo = 1
+                                s_yr += 1
 
                         sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
 
@@ -241,11 +271,14 @@ def load_data(supabase, company_configs, project_metadata=None):
                         sub_key = f"{worksheet_name}_{sub_val}"
                         sub_meta = project_metadata.get(sub_key, metadata_entry)
 
-                        # Apply per-sub monthly overrides to display columns
+                        # Apply per-sub monthly overrides to display columns (infer year)
                         sub_overrides = split_manual_monthly.get(str(sub_val), {})
                         for month_name, extra_count in sub_overrides.items():
-                            if month_name in sub_monthly:
-                                sub_monthly[month_name] += extra_count
+                            if month_name in MONTHS_FR:
+                                mo_num = MONTHS_FR.index(month_name) + 1
+                                override_year = current_year if mo_num <= current_month else current_year - 1
+                                col_name = f"{month_name} {override_year}"
+                                sub_monthly[col_name] = sub_monthly.get(col_name, 0) + extra_count
 
                         # All-time for this sub-project
                         sub_df_all = records_df[records_df[split_by_field] == sub_val]
@@ -318,21 +351,54 @@ def calculate_metrics(df):
     if df.empty:
         return df
 
-    current_month_idx = datetime.now().month - 1
-    available_months = [m for m in MONTHS_FR if m in df.columns]
+    import re
+    now = datetime.now()
+    current_year  = now.year
+    current_month = now.month
 
-    df['usage_this_month'] = df[MONTHS_FR[current_month_idx]] if MONTHS_FR[current_month_idx] in df.columns else 0
+    # Detect all year-qualified month columns and sort chronologically
+    _month_re = re.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    def _parse_col(col):
+        m = _month_re.match(col)
+        if m:
+            mo_num = MONTHS_FR.index(m.group(1)) + 1
+            yr     = int(m.group(2))
+            return (yr, mo_num, col)
+        return None
 
-    month_cols_3mo = []
-    for i in range(0, 3):
-        month_idx = (current_month_idx - i) % 12
-        if MONTHS_FR[month_idx] in df.columns:
-            month_cols_3mo.append(MONTHS_FR[month_idx])
-    df['usage_last_3_months'] = df[month_cols_3mo].sum(axis=1) if month_cols_3mo else 0
-    df['usage_last_12_months'] = df[available_months].sum(axis=1) if available_months else 0
+    all_month_cols_info = sorted(
+        filter(None, (_parse_col(c) for c in df.columns)),
+        key=lambda x: (x[0], x[1]),
+    )
+    all_month_cols = [col for (_, _, col) in all_month_cols_info]
+
+    # Helpers to get column name for a given (year, month_num)
+    def _col(yr, mo):
+        return f"{MONTHS_FR[mo - 1]} {yr}"
+
+    current_col  = _col(current_year, current_month)
+    prev_mo      = current_month - 1 if current_month > 1 else 12
+    prev_yr      = current_year if current_month > 1 else current_year - 1
+    prev_col     = _col(prev_yr, prev_mo)
+
+    # last-3-months columns (current + prev 2)
+    last_3_info  = [(yr, mo, col) for (yr, mo, col) in all_month_cols_info
+                    if (yr * 12 + mo) >= (current_year * 12 + current_month - 2)
+                    and (yr * 12 + mo) <= (current_year * 12 + current_month)]
+    last_3_cols  = [col for (_, _, col) in last_3_info]
+
+    # last-12-months columns
+    last_12_info = [(yr, mo, col) for (yr, mo, col) in all_month_cols_info
+                    if (yr * 12 + mo) >= (current_year * 12 + current_month - 11)
+                    and (yr * 12 + mo) <= (current_year * 12 + current_month)]
+    last_12_cols = [col for (_, _, col) in last_12_info]
+
+    df['usage_this_month']    = df[current_col] if current_col in df.columns else 0
+    df['usage_last_3_months'] = df[last_3_cols].sum(axis=1)  if last_3_cols  else 0
+    df['usage_last_12_months']= df[last_12_cols].sum(axis=1) if last_12_cols else 0
 
     def get_historical_avg(row):
-        usage_values = [row[m] for m in available_months if pd.notna(row.get(m)) and row.get(m, 0) > 0]
+        usage_values = [row[c] for c in all_month_cols if pd.notna(row.get(c)) and row.get(c, 0) > 0]
         if len(usage_values) >= 6:
             return np.mean(usage_values[:6])
         elif len(usage_values) > 0:
@@ -340,58 +406,58 @@ def calculate_metrics(df):
         return 0
 
     df['historical_monthly_avg'] = df.apply(get_historical_avg, axis=1)
-    df['recent_monthly_avg'] = df['usage_last_3_months'] / 3
-    df['usage_drop_percent'] = ((df['historical_monthly_avg'] - df['recent_monthly_avg']) /
-                                 (df['historical_monthly_avg'] + 0.01) * 100)
+    df['recent_monthly_avg']     = df['usage_last_3_months'] / 3
+    df['usage_drop_percent']     = (
+        (df['historical_monthly_avg'] - df['recent_monthly_avg']) /
+        (df['historical_monthly_avg'] + 0.01) * 100
+    )
 
-    prev_month_idx = (current_month_idx - 1) % 12
-    if MONTHS_FR[prev_month_idx] in df.columns and MONTHS_FR[current_month_idx] in df.columns:
-        df['usage_prev_month'] = df[MONTHS_FR[prev_month_idx]]
-        df['mom_usage_percent'] = ((df['usage_this_month'] - df['usage_prev_month']) /
-                                    (df['usage_prev_month'] + 0.01) * 100)
+    if prev_col in df.columns and current_col in df.columns:
+        df['usage_prev_month']  = df[prev_col]
+        df['mom_usage_percent'] = (
+            (df['usage_this_month'] - df['usage_prev_month']) /
+            (df['usage_prev_month'] + 0.01) * 100
+        )
     else:
-        df['usage_prev_month'] = 0
+        df['usage_prev_month']  = 0
         df['mom_usage_percent'] = 0
 
     df['trailing_3mo_monthly_avg_usage'] = df['usage_last_3_months'] / 3
 
     minutes_saved = df['Minutes Saved per usage']
-    hourly_rate = df['Client Hourly Rate']
-    df['time_saved_hours_this_month'] = df['usage_this_month'] * minutes_saved / 60
-    df['time_saved_hours_3mo'] = df['usage_last_3_months'] * minutes_saved / 60
-    df['time_saved_hours_12mo'] = df['usage_last_12_months'] * minutes_saved / 60
-    df['cost_saved_this_month'] = df['time_saved_hours_this_month'] * hourly_rate
-    df['cost_saved_3mo'] = df['time_saved_hours_3mo'] * hourly_rate
-    df['cost_saved_12mo'] = df['time_saved_hours_12mo'] * hourly_rate
+    hourly_rate   = df['Client Hourly Rate']
+    df['time_saved_hours_this_month'] = df['usage_this_month']     * minutes_saved / 60
+    df['time_saved_hours_3mo']        = df['usage_last_3_months']  * minutes_saved / 60
+    df['time_saved_hours_12mo']       = df['usage_last_12_months'] * minutes_saved / 60
+    df['cost_saved_this_month']       = df['time_saved_hours_this_month'] * hourly_rate
+    df['cost_saved_3mo']              = df['time_saved_hours_3mo']        * hourly_rate
+    df['cost_saved_12mo']             = df['time_saved_hours_12mo']       * hourly_rate
     # Use all-time usage for cumulative ROI (true since-launch total)
     all_time_usage = df['usage_all_time'] if 'usage_all_time' in df.columns else df['usage_last_12_months']
-    df['cumulative_cost_saved'] = all_time_usage * minutes_saved / 60 * hourly_rate
+    df['cumulative_cost_saved']       = all_time_usage * minutes_saved / 60 * hourly_rate
 
     project_cost = df['Investment'].fillna(0)
-    df['project_cost'] = project_cost
-    df['roi_net'] = df['cumulative_cost_saved'] - project_cost
-    df['roi_reached'] = (project_cost > 0) & (df['roi_net'] >= 0)
+    df['project_cost']         = project_cost
+    df['roi_net']              = df['cumulative_cost_saved'] - project_cost
+    df['roi_reached']          = (project_cost > 0) & (df['roi_net'] >= 0)
     df['roi_progress_percent'] = df['cumulative_cost_saved'] / project_cost.replace(0, np.nan) * 100
 
     monthly_target = df['Monthly ROI Goal'].fillna(0)
     df['mo_roi_pct'] = df['cost_saved_this_month'] / monthly_target.replace(0, np.nan) * 100
 
-    # --- Activity flags (mutually exclusive, based purely on usage) ---
-    df['tag_active']         = df['usage_this_month'] > 0
-    df['tag_no_recent']      = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] > 0)
-    df['tag_inactive']       = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] == 0)
+    df['tag_active']        = df['usage_this_month'] > 0
+    df['tag_no_recent']     = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] > 0)
+    df['tag_inactive']      = (df['usage_this_month'] == 0) & (df['usage_last_3_months'] == 0)
 
-    # --- ROI / financial flags (NOT mutually exclusive) ---
-    has_investment   = project_cost > 0
-    has_target       = monthly_target > 0
-    df['tag_no_config']      = ~has_investment
-    df['tag_roi_reached']    = df['roi_reached']
-    df['tag_usage_dropped']  = (df['usage_drop_percent'] > 50) & (df['historical_monthly_avg'] > 5)
-    df['tag_above_target']   = has_investment & has_target & (df['cost_saved_this_month'] >= monthly_target)
-    df['tag_below_target']   = has_investment & has_target & (df['cost_saved_this_month'] < monthly_target)
-    df['tag_no_target']      = has_investment & ~has_target & ~df['roi_reached']
+    has_investment = project_cost > 0
+    has_target     = monthly_target > 0
+    df['tag_no_config']     = ~has_investment
+    df['tag_roi_reached']   = df['roi_reached']
+    df['tag_usage_dropped'] = (df['usage_drop_percent'] > 50) & (df['historical_monthly_avg'] > 5)
+    df['tag_above_target']  = has_investment & has_target & (df['cost_saved_this_month'] >= monthly_target)
+    df['tag_below_target']  = has_investment & has_target & (df['cost_saved_this_month'] < monthly_target)
+    df['tag_no_target']     = has_investment & ~has_target & ~df['roi_reached']
 
-    # Keep single-value columns for display purposes (left border, modal badge)
     def _activity_status(row):
         if row['tag_active']:    return 'Active'
         if row['tag_no_recent']: return 'No Recent Usage'
