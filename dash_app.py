@@ -1630,6 +1630,36 @@ def update_metrics(store_data, hidden_store, client_filter, project_filter, acti
 # 5. Solution detail modal on row selection
 # ---------------------------------------------------------------------------
 
+def _fetch_manual_project_timeseries(client, project_name):
+    """Fetch timeseries for a manually-tracked project from manual_daily_usage."""
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        manual_projects = supabase.table("manual_projects").select("*").execute().data or []
+        mp = next(
+            (m for m in manual_projects
+             if m["project_name"] == project_name and m.get("client_name") == client),
+            None,
+        )
+        if not mp:
+            return None
+        project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+        entries = (
+            supabase.table("manual_daily_usage")
+            .select("*")
+            .eq("project_key", project_key)
+            .order("date")
+            .execute()
+            .data or []
+        )
+        if not entries:
+            return None
+        daily = [{"date": e["date"], "count": e["usage_count"]} for e in entries]
+        return {"daily": daily}
+    except Exception as e:
+        print(f"Manual timeseries fetch error: {e}")
+        return None
+
+
 def _fetch_project_timeseries(client, project, project_group):
     """Fetch raw daily records for the project from Supabase. Returns store dict or None."""
     from modules.data_loader import _fetch_all_rows
@@ -1640,7 +1670,7 @@ def _fetch_project_timeseries(client, project, project_group):
             if proj_cfg:
                 break
     if not proj_cfg:
-        return None
+        return _fetch_manual_project_timeseries(client, project)
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         rows = _fetch_all_rows(supabase, proj_cfg['supabase_table'])
