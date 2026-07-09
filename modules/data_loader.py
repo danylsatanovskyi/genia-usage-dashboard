@@ -1,6 +1,7 @@
 """
 Shared data loading - used by both app and run_daily_alerts for consistent metrics
 """
+import re
 import pandas as pd
 import numpy as np
 from datetime import datetime, date, timedelta
@@ -68,6 +69,7 @@ def _load_manual_data(supabase, project_metadata):
             project_key = f"{worksheet_name}_{project_name}"
 
             entries = usage_by_key.get(project_key, [])
+            metadata_entry = project_metadata.get(project_key, {})
 
             usage_by_date = {}
             for entry in entries:
@@ -79,12 +81,26 @@ def _load_manual_data(supabase, project_metadata):
 
             usage_yesterday = usage_by_date.get(yesterday, 0)
 
-            monthly_usage = {}
-            if usage_by_date:
+            # Determine display start month
+            month_activated_str = metadata_entry.get('month_activated')
+            forced_start = None
+            if month_activated_str:
+                try:
+                    fmt = '%Y-%m-%d' if len(month_activated_str) > 7 else '%Y-%m'
+                    act = datetime.strptime(month_activated_str, fmt)
+                    forced_start = (act.year, act.month)
+                except Exception:
+                    pass
+
+            if forced_start:
+                m_yr, m_mo = forced_start
+            elif usage_by_date:
                 min_d = min(usage_by_date.keys())
                 m_yr, m_mo = min_d.year, min_d.month
             else:
                 m_yr, m_mo = current_year, current_month
+
+            monthly_usage = {}
             while (m_yr, m_mo) <= (current_year, current_month):
                 col_name = f"{MONTHS_FR[m_mo - 1]} {m_yr}"
                 count = sum(
@@ -97,7 +113,20 @@ def _load_manual_data(supabase, project_metadata):
                     m_mo = 1
                     m_yr += 1
 
-            metadata_entry = project_metadata.get(project_key, {})
+            # If no forced start, trim leading zero-usage months
+            if not forced_start:
+                _sorted_cols = sorted(
+                    monthly_usage.keys(),
+                    key=lambda c: next(
+                        (int(c[len(mn) + 1:]) * 12 + i
+                         for i, mn in enumerate(MONTHS_FR) if c.startswith(mn + ' ')),
+                        999999
+                    )
+                )
+                first_nz = next((i for i, c in enumerate(_sorted_cols) if monthly_usage[c] > 0), None)
+                if first_nz is not None and first_nz > 0:
+                    for c in _sorted_cols[:first_nz]:
+                        del monthly_usage[c]
 
             project_row = {
                 'COMPANY': company_name,
@@ -175,14 +204,30 @@ def load_data(supabase, company_configs, project_metadata=None):
                 current_year = date.today().year
                 current_month = date.today().month
 
-                # Build monthly usage for ALL months with data (not capped at 12)
-                monthly_usage = {}
-                if not records_df.empty:
+                project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
+                metadata_entry = project_metadata.get(project_key, {})
+
+                # Determine display start month
+                month_activated_str = metadata_entry.get('month_activated')
+                forced_start = None
+                if month_activated_str:
+                    try:
+                        fmt = '%Y-%m-%d' if len(month_activated_str) > 7 else '%Y-%m'
+                        act = datetime.strptime(month_activated_str, fmt)
+                        forced_start = (act.year, act.month)
+                    except Exception:
+                        pass
+
+                if forced_start:
+                    start_year, start_month = forced_start
+                elif not records_df.empty:
                     min_date = records_df[date_col].min()
                     start_year, start_month = min_date.year, min_date.month
                 else:
                     start_year, start_month = current_year, current_month
 
+                # Build monthly usage for ALL months from start to now
+                monthly_usage = {}
                 yr, mo = start_year, start_month
                 while (yr, mo) <= (current_year, current_month):
                     col_name = f"{MONTHS_FR[mo - 1]} {yr}"
@@ -205,8 +250,20 @@ def load_data(supabase, company_configs, project_metadata=None):
                         col_name = f"{month_name} {override_year}"
                         monthly_usage[col_name] = monthly_usage.get(col_name, 0) + extra_count
 
-                project_key = f"{company_config.get('worksheet_name', company_name)}_{project_name}"
-                metadata_entry = project_metadata.get(project_key, {})
+                # If no forced start, trim leading zero-usage months
+                if not forced_start:
+                    _sorted_cols = sorted(
+                        monthly_usage.keys(),
+                        key=lambda c: next(
+                            (int(c[len(mn) + 1:]) * 12 + i
+                             for i, mn in enumerate(MONTHS_FR) if c.startswith(mn + ' ')),
+                            999999
+                        )
+                    )
+                    first_nz = next((i for i, c in enumerate(_sorted_cols) if monthly_usage[c] > 0), None)
+                    if first_nz is not None and first_nz > 0:
+                        for c in _sorted_cols[:first_nz]:
+                            del monthly_usage[c]
                 usage_type_override = "Matched Companies" if (company_name == "TECHO BLOC" and project_name == "MATCHING") else None
 
                 split_by_field = project_config.get('split_by_field')
@@ -221,13 +278,21 @@ def load_data(supabase, company_configs, project_metadata=None):
                     if split_values:
                         sub_values = sorted(sub_values, key=lambda v: split_values.index(v) if v in split_values else 999)
 
-                    # Build per-sub-value monthly usage first so we can sum for the total row
-                    sub_rows_data = []
+                    # Sub-rows only — no aggregated total row.
+                    # Each sub-row has its own metadata entry keyed by worksheet_name + sub_val,
+                    # so individual investments/rates can be configured per sub-project.
+                    # Falls back to the parent project entry if no sub-specific entry exists.
+                    worksheet_name = company_config.get('worksheet_name', company_name)
+                    split_manual_monthly  = project_config.get('split_manual_monthly_overrides', {})
+                    split_manual_historical = project_config.get('split_manual_historical_extra', {})
                     total_monthly = {}
                     total_yesterday = 0
 
-                    for sub_val in sub_values:
+                    for order, sub_val in enumerate(sub_values):
                         sub_df = records_df[records_df[split_by_field] == sub_val]
+                        display_name = split_display_names.get(str(sub_val), str(sub_val))
+                        sub_key = f"{worksheet_name}_{sub_val}"
+                        sub_meta = project_metadata.get(sub_key, metadata_entry)
 
                         sub_yesterday = _count_usage(
                             sub_df[sub_df['_date'] == yesterday][usage_field],
@@ -235,13 +300,26 @@ def load_data(supabase, company_configs, project_metadata=None):
                         ) if usage_field in sub_df.columns else 0
                         total_yesterday += sub_yesterday
 
-                        sub_monthly = {}
-                        # All months with data for this sub-project
-                        if not sub_df.empty:
+                        # Determine start month for this sub-project
+                        sub_month_activated_str = sub_meta.get('month_activated')
+                        sub_forced_start = None
+                        if sub_month_activated_str:
+                            try:
+                                fmt = '%Y-%m-%d' if len(sub_month_activated_str) > 7 else '%Y-%m'
+                                act = datetime.strptime(sub_month_activated_str, fmt)
+                                sub_forced_start = (act.year, act.month)
+                            except Exception:
+                                pass
+
+                        if sub_forced_start:
+                            sub_start_yr, sub_start_mo = sub_forced_start
+                        elif not sub_df.empty:
                             sub_min = sub_df[date_col].min()
                             sub_start_yr, sub_start_mo = sub_min.year, sub_min.month
                         else:
                             sub_start_yr, sub_start_mo = current_year, current_month
+
+                        sub_monthly = {}
                         s_yr, s_mo = sub_start_yr, sub_start_mo
                         while (s_yr, s_mo) <= (current_year, current_month):
                             col_name = f"{MONTHS_FR[s_mo - 1]} {s_yr}"
@@ -256,21 +334,6 @@ def load_data(supabase, company_configs, project_metadata=None):
                                 s_mo = 1
                                 s_yr += 1
 
-                        sub_rows_data.append((sub_val, sub_yesterday, sub_monthly))
-
-                    # Sub-rows only — no aggregated total row.
-                    # Each sub-row has its own metadata entry keyed by worksheet_name + sub_val,
-                    # so individual investments/rates can be configured per sub-project.
-                    # Falls back to the parent project entry if no sub-specific entry exists.
-                    worksheet_name = company_config.get('worksheet_name', company_name)
-                    split_manual_monthly  = project_config.get('split_manual_monthly_overrides', {})
-                    split_manual_historical = project_config.get('split_manual_historical_extra', {})
-
-                    for order, (sub_val, sub_yesterday, sub_monthly) in enumerate(sub_rows_data):
-                        display_name = split_display_names.get(str(sub_val), str(sub_val))
-                        sub_key = f"{worksheet_name}_{sub_val}"
-                        sub_meta = project_metadata.get(sub_key, metadata_entry)
-
                         # Apply per-sub monthly overrides to display columns (infer year)
                         sub_overrides = split_manual_monthly.get(str(sub_val), {})
                         for month_name, extra_count in sub_overrides.items():
@@ -280,9 +343,23 @@ def load_data(supabase, company_configs, project_metadata=None):
                                 col_name = f"{month_name} {override_year}"
                                 sub_monthly[col_name] = sub_monthly.get(col_name, 0) + extra_count
 
+                        # If no forced start, trim leading zero-usage months
+                        if not sub_forced_start:
+                            _sorted_sub_cols = sorted(
+                                sub_monthly.keys(),
+                                key=lambda c: next(
+                                    (int(c[len(mn) + 1:]) * 12 + i
+                                     for i, mn in enumerate(MONTHS_FR) if c.startswith(mn + ' ')),
+                                    999999
+                                )
+                            )
+                            first_nz = next((i for i, c in enumerate(_sorted_sub_cols) if sub_monthly[c] > 0), None)
+                            if first_nz is not None and first_nz > 0:
+                                for c in _sorted_sub_cols[:first_nz]:
+                                    del sub_monthly[c]
+
                         # All-time for this sub-project
-                        sub_df_all = records_df[records_df[split_by_field] == sub_val]
-                        sub_all_time = _count_usage(sub_df_all[usage_field], value_type, match_value) if usage_field in sub_df_all.columns else 0
+                        sub_all_time = _count_usage(sub_df[usage_field], value_type, match_value) if usage_field in sub_df.columns else 0
                         sub_all_time += sum(sub_overrides.values())
                         sub_all_time += split_manual_historical.get(str(sub_val), 0)
 
