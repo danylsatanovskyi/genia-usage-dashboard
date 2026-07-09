@@ -37,6 +37,87 @@ def _count_usage(series, value_type, match_value=None):
     return (series == True).sum()
 
 
+def _load_manual_data(supabase, project_metadata):
+    """Load data for manually-tracked projects (manual_projects + manual_daily_usage tables)."""
+    try:
+        manual_projects = supabase.table("manual_projects").select("*").execute().data or []
+        if not manual_projects:
+            return []
+
+        all_usage = supabase.table("manual_daily_usage").select("*").execute().data or []
+
+        usage_by_key = {}
+        for entry in all_usage:
+            key = entry["project_key"]
+            if key not in usage_by_key:
+                usage_by_key[key] = []
+            usage_by_key[key].append(entry)
+
+        current_year = date.today().year
+        current_month = date.today().month
+        yesterday = date.today() - timedelta(days=1)
+        while yesterday.weekday() >= 5:
+            yesterday -= timedelta(days=1)
+
+        rows = []
+        for mp in manual_projects:
+            company_name = mp["company_name"]
+            client_name = mp.get("client_name", company_name)
+            project_name = mp["project_name"]
+            worksheet_name = mp.get("worksheet_name", company_name)
+            project_key = f"{worksheet_name}_{project_name}"
+
+            entries = usage_by_key.get(project_key, [])
+
+            usage_by_date = {}
+            for entry in entries:
+                try:
+                    d = pd.to_datetime(entry["date"]).date()
+                    usage_by_date[d] = int(entry.get("usage_count", 0))
+                except Exception:
+                    continue
+
+            usage_yesterday = usage_by_date.get(yesterday, 0)
+
+            monthly_usage = {}
+            for month_idx in range(12):
+                month_num = month_idx + 1
+                year = current_year if month_num <= current_month else current_year - 1
+                month_name = MONTHS_FR[month_idx]
+                count = sum(
+                    v for d, v in usage_by_date.items()
+                    if d.month == month_num and d.year == year
+                )
+                monthly_usage[month_name] = count
+
+            metadata_entry = project_metadata.get(project_key, {})
+
+            project_row = {
+                'COMPANY': company_name,
+                'CLIENT': client_name,
+                'PROJECT': project_name,
+                'Investment': metadata_entry.get('investment'),
+                'Monthly ROI Goal': metadata_entry.get('monthly_roi_goal'),
+                'Client Hourly Rate': metadata_entry.get('client_hourly_rate'),
+                'Minutes Saved per usage': metadata_entry.get('minutes_saved_per_usage'),
+                'Month Activated': metadata_entry.get('month_activated'),
+                'Usage Type': None,
+                'Months Active': None,
+                '_hide_roi': False,
+                '_project_group': project_name,
+                '_sort_order': 0,
+                '_split_primary': True,
+                'usage_yesterday': usage_yesterday,
+            }
+            project_row.update(monthly_usage)
+            rows.append(project_row)
+
+        return rows
+    except Exception as e:
+        print(f"_load_manual_data error: {e}")
+        return []
+
+
 def load_data(supabase, company_configs, project_metadata=None):
     """Load data from Supabase - same logic as app"""
     if project_metadata is None:
@@ -199,7 +280,10 @@ def load_data(supabase, company_configs, project_metadata=None):
             except Exception as e:
                 print(f"Error: {company_name} - {project_name}: {e}")
                 continue
-    
+
+    # Load manually-tracked project data
+    all_data.extend(_load_manual_data(supabase, project_metadata))
+
     if all_data:
         return pd.DataFrame(all_data)
     return pd.DataFrame()

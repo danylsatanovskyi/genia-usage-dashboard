@@ -79,6 +79,59 @@ def unhide_project(project_name):
 
 
 # ---------------------------------------------------------------------------
+# Helpers — manual project tracking
+# ---------------------------------------------------------------------------
+
+def load_manual_projects():
+    try:
+        return _sb().table("manual_projects").select("*").order("created_at").execute().data or []
+    except Exception as e:
+        print(f"load_manual_projects error: {e}")
+        return []
+
+
+def save_manual_project(company_name, client_name, project_name, worksheet_name):
+    _sb().table("manual_projects").insert({
+        "company_name": company_name,
+        "client_name": client_name,
+        "project_name": project_name,
+        "worksheet_name": worksheet_name,
+    }).execute()
+
+
+def delete_manual_project_by_id(project_id):
+    _sb().table("manual_projects").delete().eq("id", str(project_id)).execute()
+
+
+def load_manual_usage_entries(project_key):
+    try:
+        return _sb().table("manual_daily_usage").select("*").eq(
+            "project_key", project_key
+        ).order("date", desc=True).execute().data or []
+    except Exception as e:
+        print(f"load_manual_usage_entries error: {e}")
+        return []
+
+
+def upsert_manual_usage_entry(project_key, entry_date, usage_count):
+    """Insert or update (by project_key+date unique constraint)."""
+    _sb().table("manual_daily_usage").upsert(
+        {"project_key": project_key, "date": str(entry_date), "usage_count": int(usage_count)},
+        on_conflict="project_key,date",
+    ).execute()
+
+
+def update_manual_usage_entry_by_id(entry_id, entry_date, usage_count):
+    _sb().table("manual_daily_usage").update(
+        {"date": str(entry_date), "usage_count": int(usage_count)}
+    ).eq("id", str(entry_id)).execute()
+
+
+def delete_manual_usage_entry(entry_id):
+    _sb().table("manual_daily_usage").delete().eq("id", str(entry_id)).execute()
+
+
+# ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
@@ -935,6 +988,66 @@ def make_settings_tab():
                     overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=4),
             ]),
+            html.Hr(style={"margin": "36px 0 24px 0"}),
+            html.H5("Manual Project Tracking", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
+            dbc.Row([
+                dbc.Col([
+                    html.H6("Existing Manual Projects", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
+                    html.Div(id="manual-projects-list"),
+                    html.Hr(style={"margin": "16px 0"}),
+                    html.P("Add New Project", style={"fontWeight": "700", "fontSize": "13px", "marginBottom": "8px", "color": DARK}),
+                    dbc.Label("Client", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                    dcc.Dropdown(
+                        id="manual-client-select",
+                        placeholder="Select client...",
+                        style={"marginBottom": "8px", "fontSize": "13px"},
+                    ),
+                    html.Div([
+                        dbc.Label("New Client Name", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                        dbc.Input(id="manual-new-client-input", placeholder="e.g. ACME CORP", size="sm",
+                                  style={"marginBottom": "8px"}),
+                    ], id="manual-new-client-div", style={"display": "none"}),
+                    dbc.Label("Project Name", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                    dbc.Input(id="manual-project-name-input", placeholder="e.g. INVOICE BOT", size="sm",
+                              style={"marginBottom": "8px"}),
+                    dbc.Button("Add Project", id="btn-add-manual-project", size="sm",
+                               style={"background": BRAND, "border": "none", "fontWeight": "600"}),
+                    html.Div(id="manual-project-status", style={"marginTop": "8px"}),
+                ], md=4),
+                dbc.Col([
+                    html.H6("Log Daily Usage", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
+                    dcc.Dropdown(
+                        id="manual-project-select",
+                        placeholder="Select a project to log usage...",
+                        style={"marginBottom": "12px", "fontSize": "13px"},
+                    ),
+                    html.Div(id="manual-edit-indicator", style={"marginBottom": "8px"}),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Date", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                            dcc.DatePickerSingle(
+                                id="manual-usage-date",
+                                display_format="YYYY-MM-DD",
+                                placeholder="Pick a date",
+                                style={"width": "100%"},
+                            ),
+                        ], md=6),
+                        dbc.Col([
+                            dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                            dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
+                                      placeholder="e.g. 42", size="sm"),
+                        ], md=6),
+                    ], className="mb-3"),
+                    dbc.Button("Save Entry", id="btn-save-manual-entry", size="sm",
+                               style={"background": BRAND, "border": "none", "fontWeight": "600", "marginRight": "8px"}),
+                    dbc.Button("Cancel", id="btn-cancel-manual-edit", size="sm", color="secondary",
+                               style={"display": "none"}),
+                    html.Div(id="manual-entry-status", style={"marginTop": "8px"}),
+                    html.Hr(style={"margin": "16px 0"}),
+                    html.H6("Usage Entries", style={"fontWeight": "700", "marginBottom": "8px", "fontSize": "13px"}),
+                    html.Div(id="manual-usage-table"),
+                ], md=8),
+            ]),
         ],
     )
 
@@ -1071,6 +1184,8 @@ app.layout = html.Div(
         dcc.Store(id="modal-raw-store"),         # raw timeseries for open project
         dcc.Store(id="modal-project-key"),       # triggers slow modal body load
         dcc.Store(id="usage-granularity", data="monthly"),  # granularity toggle state
+        dcc.Store(id="manual-refresh-store", data=0),
+        dcc.Store(id="manual-edit-entry-store"),
 
         # Layout: sidebar + main
         html.Div(
@@ -2023,83 +2138,111 @@ def _build_roi_bar(row):
 # ---------------------------------------------------------------------------
 # 6. Render settings accordion
 # ---------------------------------------------------------------------------
+
+def _make_meta_fields(display_name, project_key, metadata, is_manual=False):
+    """Build the settings fields for one project entry in the accordion."""
+    meta = metadata.get(project_key, {})
+
+    def _round_val(v):
+        if v is None: return None
+        r = round(float(v), 2)
+        return int(r) if r == int(r) else r
+
+    inv_val       = _round_val(meta.get("investment"))
+    goal_val      = _round_val(meta.get("monthly_roi_goal"))
+    mins_val      = _round_val(meta.get("minutes_saved_per_usage"))
+    rate_val      = _round_val(meta.get("client_hourly_rate"))
+    activated_val = meta.get("month_activated") or ""
+    safe_key      = project_key.replace(" ", "_").replace("/", "_")
+    label         = display_name + (" (Manual)" if is_manual else "")
+
+    return html.Div([
+        html.P(label, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
+        dbc.Row([
+            dbc.Col([
+                dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-activated", "key": safe_key},
+                          value=activated_val, placeholder="YYYY-MM", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-investment", "key": safe_key},
+                          type="text", inputMode="decimal", value=inv_val, placeholder="e.g. 5000", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-goal", "key": safe_key},
+                          type="text", inputMode="decimal", value=goal_val, placeholder="e.g. 500", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-minutes", "key": safe_key},
+                          type="text", inputMode="decimal", value=mins_val, placeholder="e.g. 10", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-rate", "key": safe_key},
+                          type="text", inputMode="decimal", value=rate_val, placeholder="e.g. 50", size="sm"),
+            ], md=6, className="mb-2"),
+        ]),
+        html.Hr(style={"margin": "12px 0"}),
+    ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key})
+
+
 @app.callback(
     Output("settings-accordion", "children"),
     Input("data-store", "data"),
+    Input("manual-refresh-store", "data"),
 )
-def render_settings_accordion(store_data):
+def render_settings_accordion(store_data, _manual_refresh):
     metadata = load_project_metadata()
+    manual_projects = load_manual_projects()
+
+    # Group manual projects by company_name for merging into accordion
+    manual_by_company = {}
+    for mp in manual_projects:
+        manual_by_company.setdefault(mp["company_name"], []).append(mp)
+
     accordion_items = []
+    processed_companies = set()
 
     for company_name, company_config in COMPANY_CONFIGS.items():
+        processed_companies.add(company_name)
         client_name = company_config.get("client_name", company_name)
-        worksheet = company_config.get("worksheet_name", company_name)
+        worksheet   = company_config.get("worksheet_name", company_name)
         project_fields = []
 
         for project_name, proj_cfg in company_config["projects"].items():
-            # For split projects, show one row per sub-value (each has its own metadata).
-            # For regular projects, show one row for the project itself.
-            split_values = proj_cfg.get("split_values")
+            split_values       = proj_cfg.get("split_values")
             split_display_names = proj_cfg.get("split_display_names", {})
             entries = (
                 [(split_display_names.get(sv, sv), f"{worksheet}_{sv}") for sv in split_values]
                 if split_values
                 else [(project_name, f"{worksheet}_{project_name}")]
             )
-
             for display_name, project_key in entries:
-                meta = metadata.get(project_key, {})
+                project_fields.append(_make_meta_fields(display_name, project_key, metadata))
 
-                def _round_val(v):
-                    if v is None: return None
-                    r = round(float(v), 2)
-                    return int(r) if r == int(r) else r
-                inv_val  = _round_val(meta.get("investment"))
-                goal_val = _round_val(meta.get("monthly_roi_goal"))
-                mins_val = _round_val(meta.get("minutes_saved_per_usage"))
-                rate_val = _round_val(meta.get("client_hourly_rate"))
-                activated_val = meta.get("month_activated") or ""
-
-                safe_key = project_key.replace(" ", "_").replace("/", "_")
-
-                project_fields.append(html.Div([
-                    html.P(display_name, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-activated", "key": safe_key},
-                                      value=activated_val, placeholder="YYYY-MM", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-investment", "key": safe_key},
-                                      type="text", inputMode="decimal", value=inv_val, placeholder="e.g. 5000", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-goal", "key": safe_key},
-                                      type="text", inputMode="decimal", value=goal_val, placeholder="e.g. 500", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-minutes", "key": safe_key},
-                                      type="text", inputMode="decimal", value=mins_val, placeholder="e.g. 10", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-rate", "key": safe_key},
-                                      type="text", inputMode="decimal", value=rate_val, placeholder="e.g. 50", size="sm"),
-                        ], md=6, className="mb-2"),
-                    ]),
-                    html.Hr(style={"margin": "12px 0"}),
-                ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key}))
+        # Append any manual projects belonging to this company
+        for mp in manual_by_company.get(company_name, []):
+            project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+            project_fields.append(_make_meta_fields(mp["project_name"], project_key, metadata, is_manual=True))
 
         accordion_items.append(
-            dbc.AccordionItem(
-                project_fields,
-                title=client_name,
-                item_id=f"accordion-{company_name}",
-            )
+            dbc.AccordionItem(project_fields, title=client_name, item_id=f"accordion-{company_name}")
+        )
+
+    # Accordion items for new clients that only exist as manual projects
+    for company_name, mps in manual_by_company.items():
+        if company_name in processed_companies:
+            continue
+        project_fields = []
+        for mp in mps:
+            project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+            project_fields.append(_make_meta_fields(mp["project_name"], project_key, metadata, is_manual=True))
+        accordion_items.append(
+            dbc.AccordionItem(project_fields, title=mps[0].get("client_name", company_name),
+                              item_id=f"accordion-{company_name}")
         )
 
     return dbc.Accordion(accordion_items, start_collapsed=True, flush=True)
@@ -2176,20 +2319,25 @@ def save_configuration(n_clicks, activated_vals, activated_ids, inv_vals, goal_v
 
 def _find_original_key(safe_key, metadata):
     """Try to find the original metadata key that corresponds to a safe_key."""
-    # Direct match first
     if safe_key in metadata:
         return safe_key
-    # Scan existing keys and compare their safe versions
     for k in metadata.keys():
         if k.replace(" ", "_").replace("/", "_") == safe_key:
             return k
-    # Scan COMPANY_CONFIGS to find the worksheet+project combo
     for company_name, company_config in COMPANY_CONFIGS.items():
         worksheet = company_config.get("worksheet_name", company_name)
         for project_name in company_config["projects"]:
             candidate = f"{worksheet}_{project_name}"
             if candidate.replace(" ", "_").replace("/", "_") == safe_key:
                 return candidate
+    # Check manual projects
+    try:
+        for mp in load_manual_projects():
+            candidate = f"{mp['worksheet_name']}_{mp['project_name']}"
+            if candidate.replace(" ", "_").replace("/", "_") == safe_key:
+                return candidate
+    except Exception:
+        pass
     return None
 
 
@@ -2274,6 +2422,292 @@ def manage_hidden_projects(hide_clicks, unhide_clicks, project_to_hide):
             return dbc.Alert(f"'{project_to_hide}' hidden.", color="warning", duration=3000), hidden
 
     return no_update, no_update
+
+
+# ===========================================================================
+# Manual Project Tracking callbacks
+# ===========================================================================
+
+@app.callback(
+    Output("manual-client-select", "options"),
+    Input("data-store", "data"),
+)
+def update_manual_client_options(store_data):
+    df = df_from_store(store_data)
+    clients = []
+    if not df.empty and "CLIENT" in df.columns:
+        clients = sorted(df["CLIENT"].dropna().unique().tolist())
+    options = [{"label": c, "value": c} for c in clients]
+    options.append({"label": "➕ New Client...", "value": "__new__"})
+    return options
+
+
+@app.callback(
+    Output("manual-new-client-div", "style"),
+    Input("manual-client-select", "value"),
+)
+def toggle_new_client_input(client_val):
+    if client_val == "__new__":
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+@app.callback(
+    Output("manual-projects-list", "children"),
+    Input("manual-refresh-store", "data"),
+)
+def render_manual_projects_list(_refresh):
+    projects = load_manual_projects()
+    if not projects:
+        return html.P("No manual projects defined yet.", style={"color": "#999", "fontSize": "13px"})
+    items = []
+    for mp in projects:
+        items.append(
+            dbc.Alert(
+                [
+                    html.Div([
+                        html.Span(mp["project_name"], style={"fontWeight": "700", "fontSize": "13px"}),
+                        html.Span(f"  {mp['client_name']}", style={"color": "#666", "fontSize": "12px"}),
+                    ]),
+                    dbc.Button(
+                        "Delete",
+                        id={"type": "btn-delete-manual-project", "id": mp["id"]},
+                        color="danger", size="sm", className="float-end",
+                    ),
+                ],
+                color="light",
+                style={"padding": "8px 12px", "marginBottom": "6px"},
+            )
+        )
+    return items
+
+
+@app.callback(
+    Output("manual-refresh-store", "data"),
+    Output("manual-project-status", "children"),
+    Output("data-store", "data", allow_duplicate=True),
+    Input("btn-add-manual-project", "n_clicks"),
+    Input({"type": "btn-delete-manual-project", "id": dash.ALL}, "n_clicks"),
+    State("manual-client-select", "value"),
+    State("manual-new-client-input", "value"),
+    State("manual-project-name-input", "value"),
+    State("manual-refresh-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_manual_project_action(add_clicks, delete_clicks, client_val, new_client_name, project_name, refresh_count):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value:
+        return no_update, no_update, no_update
+
+    refresh_count = (refresh_count or 0) + 1
+
+    if isinstance(triggered, dict) and triggered.get("type") == "btn-delete-manual-project":
+        try:
+            delete_manual_project_by_id(triggered["id"])
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert("Project deleted.", color="warning", duration=3000), df_to_store(df)
+        except Exception as e:
+            return refresh_count, dbc.Alert(f"Error: {e}", color="danger"), no_update
+
+    if triggered == "btn-add-manual-project":
+        if not project_name or not project_name.strip():
+            return no_update, dbc.Alert("Project name is required.", color="danger", duration=3000), no_update
+        if not client_val:
+            return no_update, dbc.Alert("Please select a client.", color="danger", duration=3000), no_update
+
+        if client_val == "__new__":
+            if not new_client_name or not new_client_name.strip():
+                return no_update, dbc.Alert("New client name is required.", color="danger", duration=3000), no_update
+            company_name   = new_client_name.strip().upper()
+            client_name    = new_client_name.strip().upper()
+            worksheet_name = new_client_name.strip().upper()
+        else:
+            company_name   = client_val
+            client_name    = client_val
+            worksheet_name = client_val
+            for cn, cc in COMPANY_CONFIGS.items():
+                if cc.get("client_name", cn) == client_val:
+                    company_name   = cn
+                    worksheet_name = cc.get("worksheet_name", cn)
+                    break
+
+        pname = project_name.strip().upper()
+        try:
+            save_manual_project(company_name, client_name, pname, worksheet_name)
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert(f"Project '{pname}' added.", color="success", duration=3000), df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error: {e}", color="danger"), no_update
+
+    return no_update, no_update, no_update
+
+
+@app.callback(
+    Output("manual-project-select", "options"),
+    Input("manual-refresh-store", "data"),
+)
+def update_manual_project_selector(_refresh):
+    projects = load_manual_projects()
+    return [
+        {
+            "label": f"{mp['project_name']} ({mp['client_name']})",
+            "value": f"{mp['worksheet_name']}_{mp['project_name']}",
+        }
+        for mp in projects
+    ]
+
+
+@app.callback(
+    Output("manual-usage-table", "children"),
+    Input("manual-project-select", "value"),
+    Input("manual-refresh-store", "data"),
+)
+def render_manual_usage_table(project_key, _refresh):
+    if not project_key:
+        return html.P("Select a project above to view and log usage.", style={"color": "#999", "fontSize": "13px"})
+    entries = load_manual_usage_entries(project_key)
+    if not entries:
+        return html.P("No entries yet. Add one above.", style={"color": "#999", "fontSize": "13px"})
+
+    rows = []
+    for entry in entries:
+        rows.append(html.Tr([
+            html.Td(entry["date"], style={"fontWeight": "600", "fontSize": "13px"}),
+            html.Td(str(entry["usage_count"]), style={"fontSize": "13px"}),
+            html.Td([
+                dbc.Button(
+                    "Edit",
+                    id={"type": "btn-edit-manual-entry", "id": entry["id"],
+                        "date": entry["date"], "count": str(entry["usage_count"])},
+                    color="info", size="sm", className="me-1",
+                    style={"fontSize": "11px", "padding": "2px 8px"},
+                ),
+                dbc.Button(
+                    "Delete",
+                    id={"type": "btn-delete-manual-entry", "id": entry["id"]},
+                    color="danger", size="sm",
+                    style={"fontSize": "11px", "padding": "2px 8px"},
+                ),
+            ]),
+        ]))
+
+    return dbc.Table(
+        [
+            html.Thead(html.Tr([
+                html.Th("Date", style={"fontSize": "12px"}),
+                html.Th("Usage Count", style={"fontSize": "12px"}),
+                html.Th("Actions", style={"fontSize": "12px"}),
+            ])),
+            html.Tbody(rows),
+        ],
+        striped=True, hover=True, size="sm",
+        style={"marginTop": "4px"},
+    )
+
+
+@app.callback(
+    Output("manual-usage-date", "date"),
+    Output("manual-usage-count", "value"),
+    Output("manual-edit-entry-store", "data"),
+    Output("btn-cancel-manual-edit", "style"),
+    Output("manual-edit-indicator", "children"),
+    Input({"type": "btn-edit-manual-entry", "id": dash.ALL, "date": dash.ALL, "count": dash.ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def populate_edit_form(edit_clicks):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value or not isinstance(triggered, dict):
+        return no_update, no_update, no_update, no_update, no_update
+
+    entry_id    = triggered["id"]
+    entry_date  = triggered["date"]
+    entry_count = triggered["count"]
+
+    return (
+        entry_date,
+        int(entry_count),
+        {"id": entry_id, "date": entry_date, "count": int(entry_count)},
+        {"display": "inline-block"},
+        dbc.Badge(f"Editing entry for {entry_date} — change values above and click Save", color="warning", className="mb-2"),
+    )
+
+
+@app.callback(
+    Output("manual-refresh-store", "data", allow_duplicate=True),
+    Output("manual-entry-status", "children"),
+    Output("manual-usage-date", "date", allow_duplicate=True),
+    Output("manual-usage-count", "value", allow_duplicate=True),
+    Output("manual-edit-entry-store", "data", allow_duplicate=True),
+    Output("btn-cancel-manual-edit", "style", allow_duplicate=True),
+    Output("manual-edit-indicator", "children", allow_duplicate=True),
+    Output("data-store", "data", allow_duplicate=True),
+    Input("btn-save-manual-entry", "n_clicks"),
+    Input("btn-cancel-manual-edit", "n_clicks"),
+    Input({"type": "btn-delete-manual-entry", "id": dash.ALL}, "n_clicks"),
+    State("manual-project-select", "value"),
+    State("manual-usage-date", "date"),
+    State("manual-usage-count", "value"),
+    State("manual-edit-entry-store", "data"),
+    State("manual-refresh-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_usage_entry_action(save_clicks, cancel_clicks, delete_clicks,
+                               project_key, entry_date, usage_count, edit_store, refresh_count):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value:
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    hidden_style  = {"display": "none"}
+    refresh_count = (refresh_count or 0) + 1
+
+    if triggered == "btn-cancel-manual-edit":
+        return no_update, no_update, None, None, None, hidden_style, None, no_update
+
+    if isinstance(triggered, dict) and triggered.get("type") == "btn-delete-manual-entry":
+        try:
+            delete_manual_usage_entry(triggered["id"])
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert("Entry deleted.", color="warning", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error: {e}", color="danger"), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+
+    if triggered == "btn-save-manual-entry":
+        if not project_key:
+            return no_update, dbc.Alert("Select a project first.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+        if not entry_date:
+            return no_update, dbc.Alert("Date is required.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+        if usage_count is None:
+            return no_update, dbc.Alert("Usage count is required.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+        try:
+            count = int(usage_count)
+        except (ValueError, TypeError):
+            return no_update, dbc.Alert("Usage count must be a whole number.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+
+        date_str = str(entry_date)[:10]
+        try:
+            if edit_store and edit_store.get("id"):
+                update_manual_usage_entry_by_id(edit_store["id"], date_str, count)
+                msg = f"Entry updated for {date_str}."
+            else:
+                upsert_manual_usage_entry(project_key, date_str, count)
+                msg = f"Entry saved for {date_str}."
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert(msg, color="success", duration=3000), \
+                   None, None, None, hidden_style, None, df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error saving entry: {e}", color="danger"), \
+                   no_update, no_update, no_update, no_update, no_update, no_update
+
+    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
 
 # ===========================================================================
