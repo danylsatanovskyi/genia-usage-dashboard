@@ -1072,125 +1072,220 @@ def make_settings_tab():
                 ], md=4),
             ]),
             html.Hr(style={"margin": "36px 0 24px 0"}),
-            html.H5("Manual Project Tracking", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
+            html.Div([
+                html.I(className="bi bi-pencil-square me-2", style={"color": BRAND, "fontSize": "18px"}),
+                html.Span("Manual Project Tracking", style={"color": BRAND, "fontWeight": "700", "fontSize": "18px"}),
+            ], style={"display": "flex", "alignItems": "center", "marginBottom": "20px"}),
             dbc.Row([
+                # ── Left col: project list + add form ──────────────────────
                 dbc.Col([
-                    html.H6("Existing Manual Projects", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
-                    html.Div(id="manual-projects-list"),
-                    html.Hr(style={"margin": "16px 0"}),
-                    html.P("Add New Project", style={"fontWeight": "700", "fontSize": "13px", "marginBottom": "8px", "color": DARK}),
-                    dbc.Label("Client", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                    dcc.Dropdown(
-                        id="manual-client-select",
-                        placeholder="Select client...",
-                        style={"marginBottom": "8px", "fontSize": "13px"},
-                    ),
+                    # Project list card
                     html.Div([
-                        dbc.Label("New Client Name", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                        dbc.Input(id="manual-new-client-input", placeholder="e.g. ACME CORP", size="sm",
-                                  style={"marginBottom": "8px"}),
-                    ], id="manual-new-client-div", style={"display": "none"}),
-                    dbc.Label("Project Name", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                    dbc.Input(id="manual-project-name-input", placeholder="e.g. INVOICE BOT", size="sm",
-                              style={"marginBottom": "8px"}),
-                    dcc.Loading(html.Div([
-                        dbc.Button("Add Project", id="btn-add-manual-project", size="sm",
-                                   style={"background": BRAND, "border": "none", "fontWeight": "600"}),
-                        html.Div(id="manual-project-status", style={"marginTop": "8px"}),
-                    ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        html.Div([
+                            html.I(className="bi bi-folder2-open me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Projects", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div(id="manual-projects-list", style={"padding": "8px 8px 2px 8px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)", "marginBottom": "14px",
+                    }),
+
+                    # Add project card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-plus-circle me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Add New Project", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            dbc.Label("Client", style={"fontSize": "11px", "fontWeight": "700",
+                                                       "color": "#888", "textTransform": "uppercase",
+                                                       "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(
+                                id="manual-client-select",
+                                placeholder="Select or create a client...",
+                                style={"marginBottom": "10px", "fontSize": "13px"},
+                            ),
+                            html.Div([
+                                dbc.Label("New Client Name", style={"fontSize": "11px", "fontWeight": "700",
+                                                                     "color": "#888", "textTransform": "uppercase",
+                                                                     "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                dbc.Input(id="manual-new-client-input", placeholder="e.g. ACME CORP", size="sm",
+                                          style={"marginBottom": "10px"}),
+                            ], id="manual-new-client-div", style={"display": "none"}),
+                            dbc.Label("Project Name", style={"fontSize": "11px", "fontWeight": "700",
+                                                              "color": "#888", "textTransform": "uppercase",
+                                                              "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dbc.Input(id="manual-project-name-input", placeholder="e.g. INVOICE BOT", size="sm",
+                                      style={"marginBottom": "14px"}),
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-plus me-2"), "Add Project"],
+                                    id="btn-add-manual-project", size="sm",
+                                    style={"background": BRAND, "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 18px"},
+                                ),
+                                html.Div(id="manual-project-status", style={"marginTop": "8px"}),
+                            ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        ], style={"padding": "14px 16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
                 ], md=4),
+
+                # ── Right col: log usage ────────────────────────────────────
                 dbc.Col([
-                    html.H6("Log Usage", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
-                    dcc.Dropdown(
-                        id="manual-project-select",
-                        placeholder="Select a project to log usage...",
-                        style={"marginBottom": "12px", "fontSize": "13px"},
-                    ),
-                    html.Div(id="manual-edit-indicator", style={"marginBottom": "8px"}),
-                    # Mode toggle
-                    dbc.RadioItems(
-                        id="manual-usage-mode",
-                        options=[
-                            {"label": "Daily", "value": "daily"},
-                            {"label": "Monthly", "value": "monthly"},
-                        ],
-                        value="daily",
-                        inline=True,
-                        className="mb-3",
-                        style={"fontSize": "13px"},
-                    ),
-                    # Daily date picker
                     html.Div([
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Label("Date", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                                dcc.DatePickerSingle(
-                                    id="manual-usage-date",
-                                    display_format="YYYY-MM-DD",
-                                    placeholder="Pick a date",
-                                    style={"width": "100%"},
+                        html.Div([
+                            html.I(className="bi bi-bar-chart-steps me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Log Usage", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            # Project selector
+                            dbc.Label("Project", style={"fontSize": "11px", "fontWeight": "700",
+                                                         "color": "#888", "textTransform": "uppercase",
+                                                         "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(
+                                id="manual-project-select",
+                                placeholder="Select a project...",
+                                style={"marginBottom": "14px", "fontSize": "13px"},
+                            ),
+                            html.Div(id="manual-edit-indicator", style={"marginBottom": "8px"}),
+
+                            # Mode toggle
+                            html.Div([
+                                html.Span("Log by:", style={"fontSize": "12px", "fontWeight": "700",
+                                                             "color": "#666", "marginRight": "12px",
+                                                             "whiteSpace": "nowrap"}),
+                                dbc.RadioItems(
+                                    id="manual-usage-mode",
+                                    options=[
+                                        {"label": html.Span("Day",   style={"fontSize": "13px"}), "value": "daily"},
+                                        {"label": html.Span("Month", style={"fontSize": "13px"}), "value": "monthly"},
+                                    ],
+                                    value="daily",
+                                    inline=True,
+                                    style={"marginBottom": 0},
                                 ),
-                            ], md=6),
-                            dbc.Col([
-                                dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                                dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
-                                          placeholder="e.g. 42", size="sm"),
-                            ], md=6),
-                        ]),
-                    ], id="manual-date-daily-div", style={"marginBottom": "16px"}),
-                    # Monthly pickers
-                    html.Div([
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Label("Month", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                                dcc.Dropdown(
-                                    id="manual-usage-month",
-                                    options=[{"label": m, "value": i + 1} for i, m in enumerate([
-                                        "January","February","March","April","May","June",
-                                        "July","August","September","October","November","December",
-                                    ])],
-                                    placeholder="Select month",
-                                    clearable=False,
-                                    style={"fontSize": "13px"},
+                            ], style={
+                                "display": "flex", "alignItems": "center",
+                                "padding": "8px 14px", "marginBottom": "16px",
+                                "background": "#f0fafb", "borderRadius": "8px",
+                                "border": f"1px solid {BRAND}22",
+                            }),
+
+                            # Daily date picker
+                            html.Div([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.Label("Date", style={"fontSize": "11px", "fontWeight": "700",
+                                                                   "color": "#888", "textTransform": "uppercase",
+                                                                   "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dcc.DatePickerSingle(
+                                            id="manual-usage-date",
+                                            display_format="YYYY-MM-DD",
+                                            placeholder="Pick a date",
+                                            style={"width": "100%"},
+                                        ),
+                                    ], md=6),
+                                    dbc.Col([
+                                        dbc.Label("Usage Count", style={"fontSize": "11px", "fontWeight": "700",
+                                                                          "color": "#888", "textTransform": "uppercase",
+                                                                          "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
+                                                  placeholder="e.g. 42", size="sm"),
+                                    ], md=6),
+                                ]),
+                            ], id="manual-date-daily-div", style={"marginBottom": "16px"}),
+
+                            # Monthly pickers
+                            html.Div([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.Label("Month", style={"fontSize": "11px", "fontWeight": "700",
+                                                                    "color": "#888", "textTransform": "uppercase",
+                                                                    "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dcc.Dropdown(
+                                            id="manual-usage-month",
+                                            options=[{"label": m, "value": i + 1} for i, m in enumerate([
+                                                "January","February","March","April","May","June",
+                                                "July","August","September","October","November","December",
+                                            ])],
+                                            placeholder="Month",
+                                            clearable=False,
+                                            style={"fontSize": "13px"},
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.Label("Year", style={"fontSize": "11px", "fontWeight": "700",
+                                                                   "color": "#888", "textTransform": "uppercase",
+                                                                   "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-year", type="number", min=2020, max=2035, step=1,
+                                                  placeholder="Year", size="sm", value=datetime.now().year),
+                                    ], md=3),
+                                    dbc.Col([
+                                        dbc.Label("Usage Count", style={"fontSize": "11px", "fontWeight": "700",
+                                                                          "color": "#888", "textTransform": "uppercase",
+                                                                          "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-count-monthly", type="number", min=0, step=1,
+                                                  placeholder="e.g. 42", size="sm"),
+                                    ], md=5),
+                                ]),
+                            ], id="manual-date-monthly-div", style={"display": "none", "marginBottom": "16px"}),
+
+                            # Save / Cancel
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-check-lg me-2"), "Save Entry"],
+                                    id="btn-save-manual-entry", size="sm",
+                                    style={"background": BRAND, "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 18px", "marginRight": "8px"},
                                 ),
-                            ], md=4),
-                            dbc.Col([
-                                dbc.Label("Year", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                                dbc.Input(id="manual-usage-year", type="number", min=2020, max=2035, step=1,
-                                          placeholder="Year", size="sm",
-                                          value=datetime.now().year),
-                            ], md=3),
-                            dbc.Col([
-                                dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                                dbc.Input(id="manual-usage-count-monthly", type="number", min=0, step=1,
-                                          placeholder="e.g. 42", size="sm"),
-                            ], md=5),
-                        ]),
-                    ], id="manual-date-monthly-div", style={"display": "none", "marginBottom": "16px"}),
-                    dcc.Loading(html.Div([
-                        dbc.Button("Save Entry", id="btn-save-manual-entry", size="sm",
-                                   style={"background": BRAND, "border": "none", "fontWeight": "600", "marginRight": "8px"}),
-                        dbc.Button("Cancel", id="btn-cancel-manual-edit", size="sm", color="secondary",
-                                   style={"display": "none"}),
-                        html.Div(id="manual-entry-status", style={"marginTop": "8px"}),
-                    ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
-                    html.Hr(style={"margin": "16px 0"}),
-                    html.Div([
-                        dbc.Button(
-                            [html.I(className="bi bi-chevron-right me-2", id="manual-entries-chevron"), "Usage Entries"],
-                            id="manual-entries-toggle",
-                            color="link",
-                            size="sm",
-                            style={"padding": 0, "fontWeight": "700", "fontSize": "13px",
-                                   "color": DARK, "textDecoration": "none"},
-                            n_clicks=0,
-                        ),
-                    ], style={"marginBottom": "8px"}),
-                    dbc.Collapse(
-                        html.Div(id="manual-usage-table"),
-                        id="manual-entries-collapse",
-                        is_open=False,
-                    ),
+                                dbc.Button(
+                                    "Cancel", id="btn-cancel-manual-edit", size="sm", color="secondary",
+                                    style={"display": "none", "borderRadius": "20px"},
+                                ),
+                                html.Div(id="manual-entry-status", style={"marginTop": "8px"}),
+                            ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
+
+                            # Entries collapsible
+                            html.Div([
+                                html.Div(style={"borderTop": "1px solid #eee", "margin": "18px 0 14px 0"}),
+                                dbc.Button(
+                                    [html.I(className="bi bi-chevron-right me-2", id="manual-entries-chevron"),
+                                     "Usage Entries"],
+                                    id="manual-entries-toggle",
+                                    color="link", size="sm", n_clicks=0,
+                                    style={"padding": 0, "fontWeight": "700", "fontSize": "13px",
+                                           "color": DARK, "textDecoration": "none"},
+                                ),
+                            ]),
+                            dbc.Collapse(
+                                html.Div(id="manual-usage-table", style={"marginTop": "10px"}),
+                                id="manual-entries-collapse",
+                                is_open=False,
+                            ),
+                        ], style={"padding": "16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
                 ], md=8),
             ]),
         ],
