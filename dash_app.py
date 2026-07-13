@@ -1175,8 +1175,22 @@ def make_settings_tab():
                         html.Div(id="manual-entry-status", style={"marginTop": "8px"}),
                     ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
                     html.Hr(style={"margin": "16px 0"}),
-                    html.H6("Usage Entries", style={"fontWeight": "700", "marginBottom": "8px", "fontSize": "13px"}),
-                    html.Div(id="manual-usage-table"),
+                    html.Div([
+                        dbc.Button(
+                            [html.I(className="bi bi-chevron-right me-2", id="manual-entries-chevron"), "Usage Entries"],
+                            id="manual-entries-toggle",
+                            color="link",
+                            size="sm",
+                            style={"padding": 0, "fontWeight": "700", "fontSize": "13px",
+                                   "color": DARK, "textDecoration": "none"},
+                            n_clicks=0,
+                        ),
+                    ], style={"marginBottom": "8px"}),
+                    dbc.Collapse(
+                        html.Div(id="manual-usage-table"),
+                        id="manual-entries-collapse",
+                        is_open=False,
+                    ),
                 ], md=8),
             ]),
         ],
@@ -1671,6 +1685,25 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
         flush=True,
         style={"marginBottom": "16px"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 3a-00. Manual usage entries collapsible toggle
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    """
+    function(n, isOpen) {
+        var open = n ? !isOpen : isOpen;
+        var cls = open ? 'bi bi-chevron-down me-2' : 'bi bi-chevron-right me-2';
+        return [open, cls];
+    }
+    """,
+    Output("manual-entries-collapse", "is_open"),
+    Output("manual-entries-chevron", "className"),
+    Input("manual-entries-toggle", "n_clicks"),
+    State("manual-entries-collapse", "is_open"),
+    prevent_initial_call=True,
+)
 
 
 # ---------------------------------------------------------------------------
