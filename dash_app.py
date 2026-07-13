@@ -374,9 +374,13 @@ def build_grid_data(df):
     return col_defs, rows
 
 
-def build_client_table(client_rows):
+def build_client_table(client_rows, visible_cols=None):
     """Render a client's projects as a styled HTML table with a details button per row."""
     import math as _math
+
+    if visible_cols is None:
+        visible_cols = TOGGLEABLE_COLS
+    vis = set(visible_cols)
 
     th_style = {
         "fontSize": "11px", "fontWeight": "700", "color": "#888",
@@ -385,17 +389,20 @@ def build_client_table(client_rows):
     }
     td_base = {"padding": "10px 12px", "fontSize": "13px", "verticalAlign": "middle", "borderBottom": "1px solid #f3f3f3"}
 
-    headers = html.Thead(html.Tr([
-        html.Th("Project",          style=th_style),
-        html.Th("Activated",        style={**th_style, "textAlign": "center"}),
-        html.Th("Activity",         style={**th_style, "textAlign": "center"}),
-        html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}),
-        html.Th("1 mo",             style={**th_style, "textAlign": "right"}),
-        html.Th("MoM %",            style={**th_style, "textAlign": "center"}),
-        html.Th("Mo ROI %",         style={**th_style, "textAlign": "center"}),
-        html.Th("ROI %",            style={**th_style, "textAlign": "center"}),
-        html.Th("",                 style=th_style),
-    ]))
+    # Always-visible: Project + Details button. Count all visible columns for colSpan.
+    total_cols = 2 + sum(1 for c in TOGGLEABLE_COLS if c in vis)
+
+    header_cells = [html.Th("Project", style=th_style)]
+    if "Activated"        in vis: header_cells.append(html.Th("Activated",        style={**th_style, "textAlign": "center"}))
+    if "Activity"         in vis: header_cells.append(html.Th("Activity",         style={**th_style, "textAlign": "center"}))
+    if "ROI & Performance"in vis: header_cells.append(html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}))
+    if "1 mo"             in vis: header_cells.append(html.Th("1 mo",             style={**th_style, "textAlign": "right"}))
+    if "MoM %"            in vis: header_cells.append(html.Th("MoM %",            style={**th_style, "textAlign": "center"}))
+    if "Mo ROI %"         in vis: header_cells.append(html.Th("Mo ROI %",         style={**th_style, "textAlign": "center"}))
+    if "ROI %"            in vis: header_cells.append(html.Th("ROI %",            style={**th_style, "textAlign": "center"}))
+    header_cells.append(html.Th("", style=th_style))
+
+    headers = html.Thead(html.Tr(header_cells))
 
     def _nan(v):
         return v is None or (isinstance(v, float) and (_math.isnan(v) or _math.isinf(v)))
@@ -464,14 +471,14 @@ def build_client_table(client_rows):
                         html.Div(str(ytd_saved),  style={"fontSize": "16px", "fontWeight": "700", "color": "#2e7d32"}),
                     ], style={"textAlign": "center", "padding": "0 24px"}),
                 ], style={"display": "flex", "alignItems": "center", "padding": "12px 8px", "background": "#f5fffe"}),
-                colSpan=9,
+                colSpan=total_cols,
                 style={"padding": "0", "borderBottom": "1px solid #e0f5f5"},
             ),
             id={"type": "quick-view-row", "index": project_key},
             style={"display": "none"},
         )
 
-        data_rows.append(html.Tr([
+        data_cells = [
             html.Td(
                 html.Div([
                     html.Button(
@@ -492,14 +499,15 @@ def build_client_table(client_rows):
                        "paddingLeft": "32px" if hide_roi else "8px",
                        "borderLeft": f"4px solid {border_color}"},
             ),
-            html.Td(row.get("Activated", "") or "—",
-                    style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}),
-            html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}),
-            html.Td(roi_chips, style={**td_base, "minWidth": "140px"}),
-            html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}),
-            html.Td(row.get("MoM %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}),
-            html.Td(row.get("Mo ROI %", ""), style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}),
-            html.Td(row.get("ROI %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}),
+        ]
+        if "Activated"         in vis: data_cells.append(html.Td(row.get("Activated", "") or "—", style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}))
+        if "Activity"          in vis: data_cells.append(html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}))
+        if "ROI & Performance" in vis: data_cells.append(html.Td(roi_chips, style={**td_base, "minWidth": "140px"}))
+        if "1 mo"              in vis: data_cells.append(html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "MoM %"             in vis: data_cells.append(html.Td(row.get("MoM %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}))
+        if "Mo ROI %"          in vis: data_cells.append(html.Td(row.get("Mo ROI %", ""), style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}))
+        if "ROI %"             in vis: data_cells.append(html.Td(row.get("ROI %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}))
+        data_cells.append(
             html.Td(
                 html.Button(
                     [html.I(className="bi bi-arrow-right", style={"fontSize": "11px"}), " Details"],
@@ -514,7 +522,8 @@ def build_client_table(client_rows):
                 ),
                 style={**td_base, "textAlign": "right", "width": "80px"},
             ),
-        ]))
+        )
+        data_rows.append(html.Tr(data_cells))
         data_rows.append(quick_view_row)
 
     return html.Table(
@@ -681,6 +690,9 @@ def _build_client_charts(client_df, client_id):
 # Column list (defined here so make_portfolio_tab can reference it)
 # ---------------------------------------------------------------------------
 TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
+
+# Columns that can be toggled on/off in the portfolio table
+TOGGLEABLE_COLS = ["Activated", "Activity", "ROI & Performance", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 
 
 # ---------------------------------------------------------------------------
@@ -881,6 +893,29 @@ def make_portfolio_tab():
 
             dcc.Store(id="client-sort-store", data={}),
             dcc.Store(id="accordion-active-store", data=None),
+            dcc.Store(id="col-visibility-store", data=TOGGLEABLE_COLS),
+
+            # Column visibility controls
+            html.Div([
+                html.Span("Columns:", style={
+                    "fontSize": "11px", "fontWeight": "700", "color": "#888",
+                    "textTransform": "uppercase", "letterSpacing": "0.4px",
+                    "whiteSpace": "nowrap",
+                }),
+                dbc.Checklist(
+                    id="col-visibility-checklist",
+                    options=[{"label": c, "value": c} for c in TOGGLEABLE_COLS],
+                    value=TOGGLEABLE_COLS,
+                    inline=True,
+                    style={"marginBottom": 0},
+                ),
+            ], style={
+                "display": "flex", "alignItems": "center", "gap": "16px",
+                "flexWrap": "wrap",
+                "padding": "10px 16px", "background": "#f8f9fa",
+                "borderRadius": "8px", "border": "1px solid #eee",
+                "marginBottom": "16px",
+            }),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -1453,9 +1488,10 @@ _SORT_KEYS = {
     Input("filter-activity", "value"),
     Input("filter-roi-status", "value"),
     Input("client-sort-store", "data"),
+    Input("col-visibility-store", "data"),
     State("accordion-active-store", "data"),
 )
-def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts, accordion_active):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts, visible_cols, accordion_active):
     df = df_from_store(store_data)
     if df.empty:
         return []
@@ -1498,7 +1534,7 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
         client_df_sub = df[df["CLIENT"] == client]
         summary       = _build_client_summary(client_df_sub)
-        table         = build_client_table(client_rows)
+        table         = build_client_table(client_rows, visible_cols=visible_cols)
         toggle, collapse = _build_client_charts(client_df_sub, client)
 
         sort_btns = html.Div([
@@ -1554,6 +1590,17 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
         flush=True,
         style={"marginBottom": "16px"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 3a-1. Column visibility: sync checklist → store
+# ---------------------------------------------------------------------------
+@app.callback(
+    Output("col-visibility-store", "data"),
+    Input("col-visibility-checklist", "value"),
+)
+def update_col_visibility(value):
+    return value or []
 
 
 # ---------------------------------------------------------------------------
