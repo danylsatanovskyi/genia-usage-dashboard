@@ -79,6 +79,59 @@ def unhide_project(project_name):
 
 
 # ---------------------------------------------------------------------------
+# Helpers — manual project tracking
+# ---------------------------------------------------------------------------
+
+def load_manual_projects():
+    try:
+        return _sb().table("manual_projects").select("*").order("created_at").execute().data or []
+    except Exception as e:
+        print(f"load_manual_projects error: {e}")
+        return []
+
+
+def save_manual_project(company_name, client_name, project_name, worksheet_name):
+    _sb().table("manual_projects").insert({
+        "company_name": company_name,
+        "client_name": client_name,
+        "project_name": project_name,
+        "worksheet_name": worksheet_name,
+    }).execute()
+
+
+def delete_manual_project_by_id(project_id):
+    _sb().table("manual_projects").delete().eq("id", str(project_id)).execute()
+
+
+def load_manual_usage_entries(project_key):
+    try:
+        return _sb().table("manual_daily_usage").select("*").eq(
+            "project_key", project_key
+        ).order("date", desc=True).execute().data or []
+    except Exception as e:
+        print(f"load_manual_usage_entries error: {e}")
+        return []
+
+
+def upsert_manual_usage_entry(project_key, entry_date, usage_count):
+    """Insert or update (by project_key+date unique constraint)."""
+    _sb().table("manual_daily_usage").upsert(
+        {"project_key": project_key, "date": str(entry_date), "usage_count": int(usage_count)},
+        on_conflict="project_key,date",
+    ).execute()
+
+
+def update_manual_usage_entry_by_id(entry_id, entry_date, usage_count):
+    _sb().table("manual_daily_usage").update(
+        {"date": str(entry_date), "usage_count": int(usage_count)}
+    ).eq("id", str(entry_id)).execute()
+
+
+def delete_manual_usage_entry(entry_id):
+    _sb().table("manual_daily_usage").delete().eq("id", str(entry_id)).execute()
+
+
+# ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
@@ -211,7 +264,7 @@ def build_grid_data(df):
 
     import datetime as _dt
     _now = _dt.date.today()
-    _ytd_months = MONTHS_FR[:_now.month]  # Jan → current month inclusive
+    _ytd_months = [f"{MONTHS_FR[i]} {_now.year}" for i in range(_now.month)]  # Jan → current month
 
     rows = []
     for _, row in df.iterrows():
@@ -321,9 +374,13 @@ def build_grid_data(df):
     return col_defs, rows
 
 
-def build_client_table(client_rows):
+def build_client_table(client_rows, visible_cols=None):
     """Render a client's projects as a styled HTML table with a details button per row."""
     import math as _math
+
+    if visible_cols is None:
+        visible_cols = TOGGLEABLE_COLS
+    vis = set(visible_cols)
 
     th_style = {
         "fontSize": "11px", "fontWeight": "700", "color": "#888",
@@ -332,17 +389,30 @@ def build_client_table(client_rows):
     }
     td_base = {"padding": "10px 12px", "fontSize": "13px", "verticalAlign": "middle", "borderBottom": "1px solid #f3f3f3"}
 
-    headers = html.Thead(html.Tr([
-        html.Th("Project",          style=th_style),
-        html.Th("Activated",        style={**th_style, "textAlign": "center"}),
-        html.Th("Activity",         style={**th_style, "textAlign": "center"}),
-        html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}),
-        html.Th("1 mo",             style={**th_style, "textAlign": "right"}),
-        html.Th("MoM %",            style={**th_style, "textAlign": "center"}),
-        html.Th("Mo ROI %",         style={**th_style, "textAlign": "center"}),
-        html.Th("ROI %",            style={**th_style, "textAlign": "center"}),
-        html.Th("",                 style=th_style),
-    ]))
+    # Always-visible: Project + Details button. Count all visible columns for colSpan.
+    total_cols = 2 + sum(1 for c in TOGGLEABLE_COLS if c in vis)
+
+    header_cells = [html.Th("Project", style=th_style)]
+    if "Activated"         in vis: header_cells.append(html.Th("Activated",         style={**th_style, "textAlign": "center"}))
+    if "Activity"          in vis: header_cells.append(html.Th("Activity",          style={**th_style, "textAlign": "center"}))
+    if "ROI & Performance" in vis: header_cells.append(html.Th("ROI & Performance", style={**th_style, "textAlign": "left"}))
+    if "Mo Target"         in vis: header_cells.append(html.Th("Mo Target",         style={**th_style, "textAlign": "right"}))
+    if "1 mo"              in vis: header_cells.append(html.Th("1 mo",              style={**th_style, "textAlign": "right"}))
+    if "MoM %"             in vis: header_cells.append(html.Th("MoM %",             style={**th_style, "textAlign": "center"}))
+    if "3 mo"              in vis: header_cells.append(html.Th("3 mo",              style={**th_style, "textAlign": "right"}))
+    if "12 mo"             in vis: header_cells.append(html.Th("12 mo",             style={**th_style, "textAlign": "right"}))
+    if "Mo ROI %"          in vis: header_cells.append(html.Th("Mo ROI %",          style={**th_style, "textAlign": "center"}))
+    if "Hrs This Mo"       in vis: header_cells.append(html.Th("Hrs This Mo",       style={**th_style, "textAlign": "right"}))
+    if "Hrs 12mo"          in vis: header_cells.append(html.Th("Hrs 12mo",          style={**th_style, "textAlign": "right"}))
+    if "Investment"        in vis: header_cells.append(html.Th("Investment",        style={**th_style, "textAlign": "right"}))
+    if "Total Saved"       in vis: header_cells.append(html.Th("Total Saved",       style={**th_style, "textAlign": "right"}))
+    if "ROI %"             in vis: header_cells.append(html.Th("ROI %",             style={**th_style, "textAlign": "center"}))
+    if "YTD Usage"         in vis: header_cells.append(html.Th("YTD Usage",         style={**th_style, "textAlign": "right"}))
+    if "YTD Hrs"           in vis: header_cells.append(html.Th("YTD Hrs",           style={**th_style, "textAlign": "right"}))
+    if "YTD Saved"         in vis: header_cells.append(html.Th("YTD Saved",         style={**th_style, "textAlign": "right"}))
+    header_cells.append(html.Th("", style=th_style))
+
+    headers = html.Thead(html.Tr(header_cells))
 
     def _nan(v):
         return v is None or (isinstance(v, float) and (_math.isnan(v) or _math.isinf(v)))
@@ -411,14 +481,14 @@ def build_client_table(client_rows):
                         html.Div(str(ytd_saved),  style={"fontSize": "16px", "fontWeight": "700", "color": "#2e7d32"}),
                     ], style={"textAlign": "center", "padding": "0 24px"}),
                 ], style={"display": "flex", "alignItems": "center", "padding": "12px 8px", "background": "#f5fffe"}),
-                colSpan=9,
+                colSpan=total_cols,
                 style={"padding": "0", "borderBottom": "1px solid #e0f5f5"},
             ),
             id={"type": "quick-view-row", "index": project_key},
             style={"display": "none"},
         )
 
-        data_rows.append(html.Tr([
+        data_cells = [
             html.Td(
                 html.Div([
                     html.Button(
@@ -439,14 +509,25 @@ def build_client_table(client_rows):
                        "paddingLeft": "32px" if hide_roi else "8px",
                        "borderLeft": f"4px solid {border_color}"},
             ),
-            html.Td(row.get("Activated", "") or "—",
-                    style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}),
-            html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}),
-            html.Td(roi_chips, style={**td_base, "minWidth": "140px"}),
-            html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}),
-            html.Td(row.get("MoM %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}),
-            html.Td(row.get("Mo ROI %", ""), style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}),
-            html.Td(row.get("ROI %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}),
+        ]
+        if "Activated"         in vis: data_cells.append(html.Td(row.get("Activated", "") or "—",    style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}))
+        if "Activity"          in vis: data_cells.append(html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}))
+        if "ROI & Performance" in vis: data_cells.append(html.Td(roi_chips,                            style={**td_base, "minWidth": "140px"}))
+        if "Mo Target"         in vis: data_cells.append(html.Td(row.get("Mo Target", "") or "—",      style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#888"}))
+        if "1 mo"              in vis: data_cells.append(html.Td(row.get("1 mo", ""),                  style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "MoM %"             in vis: data_cells.append(html.Td(row.get("MoM %", ""),                 style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}))
+        if "3 mo"              in vis: data_cells.append(html.Td(row.get("3 mo", ""),                  style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "12 mo"             in vis: data_cells.append(html.Td(row.get("12 mo", ""),                 style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "Mo ROI %"          in vis: data_cells.append(html.Td(row.get("Mo ROI %", ""),              style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}))
+        if "Hrs This Mo"       in vis: data_cells.append(html.Td(row.get("Hrs This Mo", "") or "—",    style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#555"}))
+        if "Hrs 12mo"          in vis: data_cells.append(html.Td(row.get("Hrs 12mo", "") or "—",       style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#555"}))
+        if "Investment"        in vis: data_cells.append(html.Td(row.get("Investment", "") or "—",     style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#888"}))
+        if "Total Saved"       in vis: data_cells.append(html.Td(row.get("Total Saved", "") or "—",    style={**td_base, "textAlign": "right", "fontWeight": "600", "color": "#2e7d32"}))
+        if "ROI %"             in vis: data_cells.append(html.Td(row.get("ROI %", ""),                 style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}))
+        if "YTD Usage"         in vis: data_cells.append(html.Td(row.get("_ytd_usage", "—"),           style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "YTD Hrs"           in vis: data_cells.append(html.Td(row.get("_ytd_hrs", "—") or "—",      style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#00838f"}))
+        if "YTD Saved"         in vis: data_cells.append(html.Td(row.get("_ytd_saved", "—") or "—",    style={**td_base, "textAlign": "right", "fontWeight": "600", "color": "#2e7d32"}))
+        data_cells.append(
             html.Td(
                 html.Button(
                     [html.I(className="bi bi-arrow-right", style={"fontSize": "11px"}), " Details"],
@@ -461,7 +542,8 @@ def build_client_table(client_rows):
                 ),
                 style={**td_base, "textAlign": "right", "width": "80px"},
             ),
-        ]))
+        )
+        data_rows.append(html.Tr(data_cells))
         data_rows.append(quick_view_row)
 
     return html.Table(
@@ -510,24 +592,33 @@ def _build_client_charts(client_df, client_id):
     now = pd.Timestamp.now()
     current_month_idx = now.month - 1
 
-    months_ordered = []
-    for i in range(11, -1, -1):
-        idx  = (current_month_idx - i) % 12
-        year = now.year if idx <= current_month_idx else now.year - 1
-        months_ordered.append((MONTHS_FR[idx], f"{MONTHS_FR[idx][:4]} '{str(year)[2:]}"))
+    import re as _re
+    _month_re = _re.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    def _parse_mo_col(col):
+        m = _month_re.match(col)
+        if m:
+            mo_num = MONTHS_FR.index(m.group(1)) + 1
+            yr     = int(m.group(2))
+            return (yr, mo_num, col)
+        return None
 
-    labels         = [lbl for _, lbl in months_ordered]
+    _avail = sorted(
+        filter(None, (_parse_mo_col(c) for c in client_df.columns)),
+        key=lambda x: (x[0], x[1]),
+    )
+
+    labels         = [f"{MONTHS_FR[mo-1][:4]} '{str(yr)[2:]}" for (yr, mo, _) in _avail]
     usage_totals   = []
     savings_totals = []
     hours_totals   = []
 
-    for month_name, _ in months_ordered:
+    for yr, mo, col_name in _avail:
         u_total = 0.0
         s_total = 0.0
         h_total = 0.0
-        if month_name in client_df.columns:
+        if col_name in client_df.columns:
             for _, row in client_df.iterrows():
-                u     = _safe_num(row.get(month_name))
+                u     = _safe_num(row.get(col_name))
                 mins  = _safe_num(row.get("Minutes Saved per usage"))
                 rate  = _safe_num(row.get("Client Hourly Rate"))
                 h     = u * mins / 60
@@ -619,6 +710,16 @@ def _build_client_charts(client_df, client_id):
 # Column list (defined here so make_portfolio_tab can reference it)
 # ---------------------------------------------------------------------------
 TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
+
+# Columns that can be toggled on/off in the portfolio table (full list, in display order)
+TOGGLEABLE_COLS = [
+    "Activated", "Activity", "ROI & Performance",
+    "Mo Target", "1 mo", "MoM %", "3 mo", "12 mo",
+    "Mo ROI %", "Hrs This Mo", "Hrs 12mo", "Investment", "Total Saved", "ROI %",
+    "YTD Usage", "YTD Hrs", "YTD Saved",
+]
+# Which columns are on by default
+DEFAULT_VISIBLE_COLS = ["Activated", "Activity", "ROI & Performance", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 
 
 # ---------------------------------------------------------------------------
@@ -819,6 +920,39 @@ def make_portfolio_tab():
 
             dcc.Store(id="client-sort-store", data={}),
             dcc.Store(id="accordion-active-store", data=None),
+            dcc.Store(id="col-visibility-store", data=DEFAULT_VISIBLE_COLS),
+
+            # Column visibility controls
+            html.Div([
+                dbc.Button(
+                    [html.I(className="bi bi-layout-three-columns me-2"), "Columns"],
+                    id="col-visibility-toggle-btn",
+                    size="sm",
+                    outline=True,
+                    color="secondary",
+                    style={"borderRadius": "20px", "fontSize": "12px", "fontWeight": "600"},
+                    n_clicks=0,
+                ),
+                dbc.Collapse(
+                    html.Div([
+                        dbc.Checklist(
+                            id="col-visibility-checklist",
+                            options=[{"label": c, "value": c} for c in TOGGLEABLE_COLS],
+                            value=DEFAULT_VISIBLE_COLS,
+                            inline=True,
+                            style={"marginBottom": 0, "fontSize": "13px"},
+                        ),
+                    ], style={
+                        "padding": "12px 16px",
+                        "background": "#f8f9fa",
+                        "borderRadius": "8px",
+                        "border": "1px solid #e0e0e0",
+                        "marginTop": "8px",
+                    }),
+                    id="col-visibility-collapse",
+                    is_open=False,
+                ),
+            ], style={"marginBottom": "16px"}),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -902,7 +1036,10 @@ def make_settings_tab():
         children=[
             dbc.Row([
                 dbc.Col([
-                    html.H5("Project Configuration", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
+                    html.Div([
+                        html.I(className="bi bi-sliders me-2", style={"color": BRAND, "fontSize": "14px"}),
+                        html.Span("Project Configuration", style={"fontWeight": "700", "fontSize": "15px", "color": DARK}),
+                    ], style={"display": "flex", "alignItems": "center", "marginBottom": "16px"}),
                     dcc.Loading(
                         id="loading-settings",
                         type="circle",
@@ -911,29 +1048,281 @@ def make_settings_tab():
                     ),
                     dcc.Loading(html.Div([
                         dbc.Button(
-                            "Save Configuration",
+                            [html.I(className="bi bi-floppy me-2"), "Save Configuration"],
                             id="btn-save-config",
-                            color="primary",
-                            style={"background": BRAND, "border": "none", "marginTop": "20px", "fontWeight": "600"},
+                            style={"background": BRAND, "border": "none", "marginTop": "20px",
+                                   "fontWeight": "600", "borderRadius": "20px", "padding": "7px 20px"},
                         ),
                         html.Div(id="save-config-status", style={"marginTop": "10px"}),
                     ]), type="circle", color=BRAND,
                     overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=8),
                 dbc.Col([
-                    html.H5("Status Reference", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
-                    make_status_legend(),
-                    html.Hr(style={"margin": "20px 0"}),
-                    html.H5("Hidden Projects", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
-                    html.Div(id="hidden-projects-list"),
-                    dcc.Loading(html.Div([
-                        html.Label("Hide a Project:", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                        dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…", style={"marginBottom": "8px"}),
-                        dbc.Button("Hide Project", id="btn-hide-project", color="warning", size="sm"),
-                        html.Div(id="hide-project-status", style={"marginTop": "10px"}),
-                    ], style={"marginTop": "20px"}), type="circle", color=BRAND,
-                    overlay_style={"visibility": "visible", "opacity": 0.5}),
+                    # Status Reference card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-info-circle me-2", style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Status Reference", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div(make_status_legend(), style={"padding": "12px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)", "marginBottom": "14px",
+                    }),
+                    # Hidden Projects card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-eye-slash me-2", style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Hidden Projects", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            html.Div(id="hidden-projects-list", style={"marginBottom": "12px"}),
+                            dbc.Label("Hide a Project", style={"fontSize": "11px", "fontWeight": "700",
+                                                               "color": "#888", "textTransform": "uppercase",
+                                                               "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…",
+                                         style={"marginBottom": "10px", "fontSize": "13px"}),
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-eye-slash me-2"), "Hide Project"],
+                                    id="btn-hide-project", size="sm",
+                                    style={"background": "#f0a500", "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 16px", "color": "white"},
+                                ),
+                                html.Div(id="hide-project-status", style={"marginTop": "10px"}),
+                            ]), type="circle", color=BRAND,
+                            overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        ], style={"padding": "14px 16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
                 ], md=4),
+            ]),
+            html.Hr(style={"margin": "36px 0 24px 0"}),
+            html.Div([
+                html.I(className="bi bi-pencil-square me-2", style={"color": BRAND, "fontSize": "18px"}),
+                html.Span("Manual Project Tracking", style={"color": BRAND, "fontWeight": "700", "fontSize": "18px"}),
+            ], style={"display": "flex", "alignItems": "center", "marginBottom": "20px"}),
+            dbc.Row([
+                # ── Left col: project list + add form ──────────────────────
+                dbc.Col([
+                    # Project list card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-folder2-open me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Projects", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div(id="manual-projects-list", style={"padding": "8px 8px 2px 8px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)", "marginBottom": "14px",
+                    }),
+
+                    # Add project card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-plus-circle me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Add New Project", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            dbc.Label("Client", style={"fontSize": "11px", "fontWeight": "700",
+                                                       "color": "#888", "textTransform": "uppercase",
+                                                       "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(
+                                id="manual-client-select",
+                                placeholder="Select or create a client...",
+                                style={"marginBottom": "10px", "fontSize": "13px"},
+                            ),
+                            html.Div([
+                                dbc.Label("New Client Name", style={"fontSize": "11px", "fontWeight": "700",
+                                                                     "color": "#888", "textTransform": "uppercase",
+                                                                     "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                dbc.Input(id="manual-new-client-input", placeholder="e.g. ACME CORP", size="sm",
+                                          style={"marginBottom": "10px"}),
+                            ], id="manual-new-client-div", style={"display": "none"}),
+                            dbc.Label("Project Name", style={"fontSize": "11px", "fontWeight": "700",
+                                                              "color": "#888", "textTransform": "uppercase",
+                                                              "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dbc.Input(id="manual-project-name-input", placeholder="e.g. INVOICE BOT", size="sm",
+                                      style={"marginBottom": "14px"}),
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-plus me-2"), "Add Project"],
+                                    id="btn-add-manual-project", size="sm",
+                                    style={"background": BRAND, "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 18px"},
+                                ),
+                                html.Div(id="manual-project-status", style={"marginTop": "8px"}),
+                            ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        ], style={"padding": "14px 16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
+                ], md=4),
+
+                # ── Right col: log usage ────────────────────────────────────
+                dbc.Col([
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-bar-chart-steps me-2",
+                                   style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Log Usage", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            # Project selector
+                            dbc.Label("Project", style={"fontSize": "11px", "fontWeight": "700",
+                                                         "color": "#888", "textTransform": "uppercase",
+                                                         "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(
+                                id="manual-project-select",
+                                placeholder="Select a project...",
+                                style={"marginBottom": "14px", "fontSize": "13px"},
+                            ),
+                            html.Div(id="manual-edit-indicator", style={"marginBottom": "8px"}),
+
+                            # Mode toggle
+                            html.Div([
+                                html.Span("Log by:", style={"fontSize": "12px", "fontWeight": "700",
+                                                             "color": "#666", "marginRight": "12px",
+                                                             "whiteSpace": "nowrap"}),
+                                dbc.RadioItems(
+                                    id="manual-usage-mode",
+                                    options=[
+                                        {"label": html.Span("Day",   style={"fontSize": "13px"}), "value": "daily"},
+                                        {"label": html.Span("Month", style={"fontSize": "13px"}), "value": "monthly"},
+                                    ],
+                                    value="daily",
+                                    inline=True,
+                                    style={"marginBottom": 0},
+                                ),
+                            ], style={
+                                "display": "flex", "alignItems": "center",
+                                "padding": "8px 14px", "marginBottom": "16px",
+                                "background": "#f0fafb", "borderRadius": "8px",
+                                "border": f"1px solid {BRAND}22",
+                            }),
+
+                            # Daily date picker
+                            html.Div([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.Label("Date", style={"fontSize": "11px", "fontWeight": "700",
+                                                                   "color": "#888", "textTransform": "uppercase",
+                                                                   "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dcc.DatePickerSingle(
+                                            id="manual-usage-date",
+                                            display_format="YYYY-MM-DD",
+                                            placeholder="Pick a date",
+                                            style={"width": "100%"},
+                                        ),
+                                    ], md=6),
+                                    dbc.Col([
+                                        dbc.Label("Usage Count", style={"fontSize": "11px", "fontWeight": "700",
+                                                                          "color": "#888", "textTransform": "uppercase",
+                                                                          "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
+                                                  placeholder="e.g. 42", size="sm"),
+                                    ], md=6),
+                                ]),
+                            ], id="manual-date-daily-div", style={"marginBottom": "16px"}),
+
+                            # Monthly pickers
+                            html.Div([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.Label("Month", style={"fontSize": "11px", "fontWeight": "700",
+                                                                    "color": "#888", "textTransform": "uppercase",
+                                                                    "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dcc.Dropdown(
+                                            id="manual-usage-month",
+                                            options=[{"label": m, "value": i + 1} for i, m in enumerate([
+                                                "January","February","March","April","May","June",
+                                                "July","August","September","October","November","December",
+                                            ])],
+                                            placeholder="Month",
+                                            clearable=False,
+                                            style={"fontSize": "13px"},
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.Label("Year", style={"fontSize": "11px", "fontWeight": "700",
+                                                                   "color": "#888", "textTransform": "uppercase",
+                                                                   "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-year", type="number", min=2020, max=2035, step=1,
+                                                  placeholder="Year", size="sm", value=datetime.now().year),
+                                    ], md=3),
+                                    dbc.Col([
+                                        dbc.Label("Usage Count", style={"fontSize": "11px", "fontWeight": "700",
+                                                                          "color": "#888", "textTransform": "uppercase",
+                                                                          "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                                        dbc.Input(id="manual-usage-count-monthly", type="number", min=0, step=1,
+                                                  placeholder="e.g. 42", size="sm"),
+                                    ], md=5),
+                                ]),
+                            ], id="manual-date-monthly-div", style={"display": "none", "marginBottom": "16px"}),
+
+                            # Save / Cancel
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-check-lg me-2"), "Save Entry"],
+                                    id="btn-save-manual-entry", size="sm",
+                                    style={"background": BRAND, "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 18px", "marginRight": "8px"},
+                                ),
+                                dbc.Button(
+                                    "Cancel", id="btn-cancel-manual-edit", size="sm", color="secondary",
+                                    style={"display": "none", "borderRadius": "20px"},
+                                ),
+                                html.Div(id="manual-entry-status", style={"marginTop": "8px"}),
+                            ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
+
+                            # Entries collapsible
+                            html.Div([
+                                html.Div(style={"borderTop": "1px solid #eee", "margin": "18px 0 14px 0"}),
+                                dbc.Button(
+                                    [html.I(className="bi bi-chevron-right me-2", id="manual-entries-chevron"),
+                                     "Usage Entries"],
+                                    id="manual-entries-toggle",
+                                    color="link", size="sm", n_clicks=0,
+                                    style={"padding": 0, "fontWeight": "700", "fontSize": "13px",
+                                           "color": DARK, "textDecoration": "none"},
+                                ),
+                            ]),
+                            dbc.Collapse(
+                                html.Div(id="manual-usage-table", style={"marginTop": "10px"}),
+                                id="manual-entries-collapse",
+                                is_open=False,
+                            ),
+                        ], style={"padding": "16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
+                ], md=8),
             ]),
         ],
     )
@@ -1071,6 +1460,8 @@ app.layout = html.Div(
         dcc.Store(id="modal-raw-store"),         # raw timeseries for open project
         dcc.Store(id="modal-project-key"),       # triggers slow modal body load
         dcc.Store(id="usage-granularity", data="monthly"),  # granularity toggle state
+        dcc.Store(id="manual-refresh-store", data=0),
+        dcc.Store(id="manual-edit-entry-store"),
 
         # Layout: sidebar + main
         html.Div(
@@ -1323,9 +1714,10 @@ _SORT_KEYS = {
     Input("filter-activity", "value"),
     Input("filter-roi-status", "value"),
     Input("client-sort-store", "data"),
+    Input("col-visibility-store", "data"),
     State("accordion-active-store", "data"),
 )
-def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts, accordion_active):
+def update_table(store_data, hidden_store, client_filter, project_filter, activity_filter, roi_filter, client_sorts, visible_cols, accordion_active):
     df = df_from_store(store_data)
     if df.empty:
         return []
@@ -1368,7 +1760,7 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
         client_df_sub = df[df["CLIENT"] == client]
         summary       = _build_client_summary(client_df_sub)
-        table         = build_client_table(client_rows)
+        table         = build_client_table(client_rows, visible_cols=visible_cols)
         toggle, collapse = _build_client_charts(client_df_sub, client)
 
         sort_btns = html.Div([
@@ -1424,6 +1816,60 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
         flush=True,
         style={"marginBottom": "16px"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 3a-00. Manual usage entries collapsible toggle
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    "function(n, isOpen) { return n ? !isOpen : isOpen; }",
+    Output("manual-entries-collapse", "is_open"),
+    Input("manual-entries-toggle", "n_clicks"),
+    State("manual-entries-collapse", "is_open"),
+    prevent_initial_call=True,
+)
+
+app.clientside_callback(
+    "function(isOpen) { return isOpen ? 'bi bi-chevron-down me-2' : 'bi bi-chevron-right me-2'; }",
+    Output("manual-entries-chevron", "className"),
+    Input("manual-entries-collapse", "is_open"),
+)
+
+
+# ---------------------------------------------------------------------------
+# 3a-0. Manual usage mode toggle: show daily or monthly inputs
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    "function(mode) { return mode === 'monthly' ? {'display':'none','marginBottom':'16px'} : {'display':'block','marginBottom':'16px'}; }",
+    Output("manual-date-daily-div", "style"),
+    Input("manual-usage-mode", "value"),
+)
+
+app.clientside_callback(
+    "function(mode) { return mode === 'monthly' ? {'display':'block','marginBottom':'16px'} : {'display':'none','marginBottom':'16px'}; }",
+    Output("manual-date-monthly-div", "style"),
+    Input("manual-usage-mode", "value"),
+)
+
+
+# ---------------------------------------------------------------------------
+# 3a-1. Column visibility: toggle collapse + sync checklist → store
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    "function(n, isOpen) { return n ? !isOpen : isOpen; }",
+    Output("col-visibility-collapse", "is_open"),
+    Input("col-visibility-toggle-btn", "n_clicks"),
+    State("col-visibility-collapse", "is_open"),
+    prevent_initial_call=True,
+)
+
+
+@app.callback(
+    Output("col-visibility-store", "data"),
+    Input("col-visibility-checklist", "value"),
+)
+def update_col_visibility(value):
+    return value or []
 
 
 # ---------------------------------------------------------------------------
@@ -1511,6 +1957,36 @@ def update_metrics(store_data, hidden_store, client_filter, project_filter, acti
 # 5. Solution detail modal on row selection
 # ---------------------------------------------------------------------------
 
+def _fetch_manual_project_timeseries(client, project_name):
+    """Fetch timeseries for a manually-tracked project from manual_daily_usage."""
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        manual_projects = supabase.table("manual_projects").select("*").execute().data or []
+        mp = next(
+            (m for m in manual_projects
+             if m["project_name"] == project_name and m.get("client_name") == client),
+            None,
+        )
+        if not mp:
+            return None
+        project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+        entries = (
+            supabase.table("manual_daily_usage")
+            .select("*")
+            .eq("project_key", project_key)
+            .order("date")
+            .execute()
+            .data or []
+        )
+        if not entries:
+            return None
+        daily = [{"date": e["date"], "count": e["usage_count"]} for e in entries]
+        return {"daily": daily}
+    except Exception as e:
+        print(f"Manual timeseries fetch error: {e}")
+        return None
+
+
 def _fetch_project_timeseries(client, project, project_group):
     """Fetch raw daily records for the project from Supabase. Returns store dict or None."""
     from modules.data_loader import _fetch_all_rows
@@ -1521,7 +1997,7 @@ def _fetch_project_timeseries(client, project, project_group):
             if proj_cfg:
                 break
     if not proj_cfg:
-        return None
+        return _fetch_manual_project_timeseries(client, project)
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         rows = _fetch_all_rows(supabase, proj_cfg['supabase_table'])
@@ -1557,6 +2033,22 @@ def _fetch_project_timeseries(client, project, project_group):
         raw['_date'] = raw[date_col].dt.date.astype(str)
         daily = raw.groupby('_date')['_u'].sum().reset_index()
         daily.columns = ['date', 'count']
+
+        # Inject manual monthly overrides as a single synthetic record on the 1st of each month
+        manual_overrides = proj_cfg.get('manual_monthly_overrides', {})
+        if manual_overrides:
+            today = datetime.now()
+            extra_rows = []
+            for month_name, count in manual_overrides.items():
+                if month_name in MONTHS_FR:
+                    month_num = MONTHS_FR.index(month_name) + 1
+                    year = today.year if month_num <= today.month else today.year - 1
+                    synthetic_date = f"{year}-{month_num:02d}-01"
+                    extra_rows.append({'date': synthetic_date, 'count': count})
+            if extra_rows:
+                daily = pd.concat([daily, pd.DataFrame(extra_rows)], ignore_index=True)
+                daily = daily.groupby('date')['count'].sum().reset_index()
+
         daily = daily.sort_values('date')
 
         return {'daily': daily.to_dict('records')}
@@ -1650,12 +2142,12 @@ def _build_modal_body(client, project, df):
     now = pd.Timestamp.now()
     current_month_idx = now.month - 1
     monthly_savings = {}
-    for i in range(11, -1, -1):
-        idx   = (current_month_idx - i) % 12
-        year  = now.year if idx <= current_month_idx else now.year - 1
-        mname = MONTHS_FR[idx]
-        usage = _safe_num(matching_df.iloc[0].get(mname, 0))
-        monthly_savings[f"{mname} {year}"] = round(usage * minutes_saved / 60 * hourly_rate, 2)
+    import re as _re2
+    _mre = _re2.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    for col in matching_df.columns:
+        if _mre.match(col):
+            usage = _safe_num(matching_df.iloc[0].get(col, 0))
+            monthly_savings[col] = round(usage * minutes_saved / 60 * hourly_rate, 2)
     raw_store['monthly_savings'] = monthly_savings
 
     def _pill(label, value, accent=False):
@@ -1687,8 +2179,8 @@ def _build_modal_body(client, project, df):
     roi_bar   = _build_roi_bar(row)
     breakeven = row.get("_breakeven", "")
 
-    ytd_months = MONTHS_FR[:current_month_idx + 1]
-    row_data   = matching_df.iloc[0]
+    row_data  = matching_df.iloc[0]
+    ytd_months = [f"{MONTHS_FR[i]} {now.year}" for i in range(current_month_idx + 1)]
     ytd_usage  = int(sum(_safe_num(row_data.get(m, 0)) for m in ytd_months))
     ytd_savings = ytd_usage * minutes_saved / 60 * hourly_rate
 
@@ -1736,14 +2228,16 @@ def _build_modal_body(client, project, df):
     hrs_prev_mo_raw = row.get("_hrs_prev_mo", "—")
     hrs_12mo_raw    = row.get("_hrs_12mo",    "—")
 
-    _mo_labels = []
-    _mo_hrs    = []
-    for i in range(11, -1, -1):
-        idx        = (current_month_idx - i) % 12
-        year       = now.year if idx <= current_month_idx else now.year - 1
-        month_name = MONTHS_FR[idx]
-        _mo_labels.append(f"{month_name[:4]} '{str(year)[2:]}")
-        _mo_hrs.append(_safe_num(row_data.get(month_name, 0)) * minutes_saved / 60)
+    import re as _re3
+    _mre3 = _re3.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    _mo_cols_sorted = sorted(
+        ((int(m.group(2)), MONTHS_FR.index(m.group(1)) + 1, col)
+         for col in matching_df.columns
+         for m in [_mre3.match(col)] if m),
+        key=lambda x: (x[0], x[1]),
+    )
+    _mo_labels = [f"{MONTHS_FR[mo-1][:4]} '{str(yr)[2:]}" for (yr, mo, _) in _mo_cols_sorted]
+    _mo_hrs    = [_safe_num(row_data.get(col, 0)) * minutes_saved / 60 for (_, _, col) in _mo_cols_sorted]
 
     max_h = max(_mo_hrs, default=0.1)
     bar_fig = go.Figure(go.Bar(
@@ -1884,24 +2378,38 @@ def render_usage_trend(raw_data, granularity="monthly"):
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
 
+    today = pd.Timestamp.now().normalize()
+
     if granularity == "daily":
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=90)
-        df = df[df["date"] >= cutoff]
+        # Aggregate by day (multiple entries on same day sum together)
+        df = df.groupby(df["date"].dt.normalize())["count"].sum().reset_index()
+        df.columns = ["date", "count"]
+        # Fill every day from first entry to today with 0
+        full_range = pd.date_range(df["date"].min(), today, freq="D")
+        df = df.set_index("date").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["date", "count"]
         x = df["date"].dt.strftime("%b %d, %Y")
         y = df["count"]
         mode = "lines+markers"
     elif granularity == "weekly":
         df["period"] = df["date"].dt.to_period("W").dt.start_time
         df = df.groupby("period")["count"].sum().reset_index()
-        # Label = "Week of Jun 23, 2025" (Monday start)
+        # Fill every week from first week to current week
+        this_week = today.to_period("W").start_time
+        full_range = pd.date_range(df["period"].min(), this_week, freq="W-MON")
+        df = df.set_index("period").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["period", "count"]
         x = df["period"].dt.strftime("w/o %b %d, %Y")
         y = df["count"]
         mode = "lines+markers"
     else:  # monthly
         df["period"] = df["date"].dt.to_period("M").dt.start_time
         df = df.groupby("period")["count"].sum().reset_index()
-        cutoff = pd.Timestamp.now() - pd.DateOffset(months=13)
-        df = df[df["period"] >= cutoff]
+        # Fill every month from first month to current month
+        this_month = today.to_period("M").start_time
+        full_range = pd.date_range(df["period"].min(), this_month, freq="MS")
+        df = df.set_index("period").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["period", "count"]
         x = df["period"].dt.strftime("%b %Y")
         y = df["count"]
         mode = "lines+markers"
@@ -1942,7 +2450,15 @@ def render_savings_trend(raw_data):
     if not monthly_savings or all(v == 0 for v in monthly_savings.values()):
         return empty
 
-    labels = list(monthly_savings.keys())
+    # Sort labels chronologically using MONTHS_FR order
+    import re as _re_s
+    _mre_s = _re_s.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    def _ms_sort_key(k):
+        m = _mre_s.match(k)
+        if m:
+            return int(m.group(2)) * 12 + MONTHS_FR.index(m.group(1))
+        return 0
+    labels = sorted(monthly_savings.keys(), key=_ms_sort_key)
     values = [monthly_savings[k] for k in labels]
 
     fig = go.Figure()
@@ -1954,7 +2470,7 @@ def render_savings_trend(raw_data):
         textfont={"size": 10, "color": DARK},
     ))
     fig.update_layout(
-        title={"text": "Monthly Savings (12 mo)", "font": {"size": 12, "color": "#888"}, "x": 0.01},
+        title={"text": "Monthly Savings", "font": {"size": 12, "color": "#888"}, "x": 0.01},
         margin={"l": 20, "r": 20, "t": 36, "b": 20},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
@@ -2007,83 +2523,111 @@ def _build_roi_bar(row):
 # ---------------------------------------------------------------------------
 # 6. Render settings accordion
 # ---------------------------------------------------------------------------
+
+def _make_meta_fields(display_name, project_key, metadata, is_manual=False):
+    """Build the settings fields for one project entry in the accordion."""
+    meta = metadata.get(project_key, {})
+
+    def _round_val(v):
+        if v is None: return None
+        r = round(float(v), 2)
+        return int(r) if r == int(r) else r
+
+    inv_val       = _round_val(meta.get("investment"))
+    goal_val      = _round_val(meta.get("monthly_roi_goal"))
+    mins_val      = _round_val(meta.get("minutes_saved_per_usage"))
+    rate_val      = _round_val(meta.get("client_hourly_rate"))
+    activated_val = meta.get("month_activated") or ""
+    safe_key      = project_key.replace(" ", "_").replace("/", "_")
+    label         = display_name + (" (Manual)" if is_manual else "")
+
+    return html.Div([
+        html.P(label, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
+        dbc.Row([
+            dbc.Col([
+                dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-activated", "key": safe_key},
+                          value=activated_val, placeholder="YYYY-MM", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-investment", "key": safe_key},
+                          type="text", inputMode="decimal", value=inv_val, placeholder="e.g. 5000", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-goal", "key": safe_key},
+                          type="text", inputMode="decimal", value=goal_val, placeholder="e.g. 500", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-minutes", "key": safe_key},
+                          type="text", inputMode="decimal", value=mins_val, placeholder="e.g. 10", size="sm"),
+            ], md=6, className="mb-2"),
+            dbc.Col([
+                dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
+                dbc.Input(id={"type": "meta-rate", "key": safe_key},
+                          type="text", inputMode="decimal", value=rate_val, placeholder="e.g. 50", size="sm"),
+            ], md=6, className="mb-2"),
+        ]),
+        html.Hr(style={"margin": "12px 0"}),
+    ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key})
+
+
 @app.callback(
     Output("settings-accordion", "children"),
     Input("data-store", "data"),
+    Input("manual-refresh-store", "data"),
 )
-def render_settings_accordion(store_data):
+def render_settings_accordion(store_data, _manual_refresh):
     metadata = load_project_metadata()
+    manual_projects = load_manual_projects()
+
+    # Group manual projects by company_name for merging into accordion
+    manual_by_company = {}
+    for mp in manual_projects:
+        manual_by_company.setdefault(mp["company_name"], []).append(mp)
+
     accordion_items = []
+    processed_companies = set()
 
     for company_name, company_config in COMPANY_CONFIGS.items():
+        processed_companies.add(company_name)
         client_name = company_config.get("client_name", company_name)
-        worksheet = company_config.get("worksheet_name", company_name)
+        worksheet   = company_config.get("worksheet_name", company_name)
         project_fields = []
 
         for project_name, proj_cfg in company_config["projects"].items():
-            # For split projects, show one row per sub-value (each has its own metadata).
-            # For regular projects, show one row for the project itself.
-            split_values = proj_cfg.get("split_values")
+            split_values       = proj_cfg.get("split_values")
             split_display_names = proj_cfg.get("split_display_names", {})
             entries = (
                 [(split_display_names.get(sv, sv), f"{worksheet}_{sv}") for sv in split_values]
                 if split_values
                 else [(project_name, f"{worksheet}_{project_name}")]
             )
-
             for display_name, project_key in entries:
-                meta = metadata.get(project_key, {})
+                project_fields.append(_make_meta_fields(display_name, project_key, metadata))
 
-                def _round_val(v):
-                    if v is None: return None
-                    r = round(float(v), 2)
-                    return int(r) if r == int(r) else r
-                inv_val  = _round_val(meta.get("investment"))
-                goal_val = _round_val(meta.get("monthly_roi_goal"))
-                mins_val = _round_val(meta.get("minutes_saved_per_usage"))
-                rate_val = _round_val(meta.get("client_hourly_rate"))
-                activated_val = meta.get("month_activated") or ""
-
-                safe_key = project_key.replace(" ", "_").replace("/", "_")
-
-                project_fields.append(html.Div([
-                    html.P(display_name, style={"fontWeight": "700", "color": DARK, "marginBottom": "8px", "fontSize": "14px"}),
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Label("Month Activated", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-activated", "key": safe_key},
-                                      value=activated_val, placeholder="YYYY-MM", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Investment ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-investment", "key": safe_key},
-                                      type="text", inputMode="decimal", value=inv_val, placeholder="e.g. 5000", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Monthly ROI Goal ($)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-goal", "key": safe_key},
-                                      type="text", inputMode="decimal", value=goal_val, placeholder="e.g. 500", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Minutes Saved / Usage", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-minutes", "key": safe_key},
-                                      type="text", inputMode="decimal", value=mins_val, placeholder="e.g. 10", size="sm"),
-                        ], md=6, className="mb-2"),
-                        dbc.Col([
-                            dbc.Label("Client Hourly Rate ($/hr)", style={"fontSize": "12px", "fontWeight": "600"}),
-                            dbc.Input(id={"type": "meta-rate", "key": safe_key},
-                                      type="text", inputMode="decimal", value=rate_val, placeholder="e.g. 50", size="sm"),
-                        ], md=6, className="mb-2"),
-                    ]),
-                    html.Hr(style={"margin": "12px 0"}),
-                ], id=f"proj-block-{safe_key}", **{"data-project-key": project_key}))
+        # Append any manual projects belonging to this company
+        for mp in manual_by_company.get(company_name, []):
+            project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+            project_fields.append(_make_meta_fields(mp["project_name"], project_key, metadata, is_manual=True))
 
         accordion_items.append(
-            dbc.AccordionItem(
-                project_fields,
-                title=client_name,
-                item_id=f"accordion-{company_name}",
-            )
+            dbc.AccordionItem(project_fields, title=client_name, item_id=f"accordion-{company_name}")
+        )
+
+    # Accordion items for new clients that only exist as manual projects
+    for company_name, mps in manual_by_company.items():
+        if company_name in processed_companies:
+            continue
+        project_fields = []
+        for mp in mps:
+            project_key = f"{mp['worksheet_name']}_{mp['project_name']}"
+            project_fields.append(_make_meta_fields(mp["project_name"], project_key, metadata, is_manual=True))
+        accordion_items.append(
+            dbc.AccordionItem(project_fields, title=mps[0].get("client_name", company_name),
+                              item_id=f"accordion-{company_name}")
         )
 
     return dbc.Accordion(accordion_items, start_collapsed=True, flush=True)
@@ -2160,20 +2704,25 @@ def save_configuration(n_clicks, activated_vals, activated_ids, inv_vals, goal_v
 
 def _find_original_key(safe_key, metadata):
     """Try to find the original metadata key that corresponds to a safe_key."""
-    # Direct match first
     if safe_key in metadata:
         return safe_key
-    # Scan existing keys and compare their safe versions
     for k in metadata.keys():
         if k.replace(" ", "_").replace("/", "_") == safe_key:
             return k
-    # Scan COMPANY_CONFIGS to find the worksheet+project combo
     for company_name, company_config in COMPANY_CONFIGS.items():
         worksheet = company_config.get("worksheet_name", company_name)
         for project_name in company_config["projects"]:
             candidate = f"{worksheet}_{project_name}"
             if candidate.replace(" ", "_").replace("/", "_") == safe_key:
                 return candidate
+    # Check manual projects
+    try:
+        for mp in load_manual_projects():
+            candidate = f"{mp['worksheet_name']}_{mp['project_name']}"
+            if candidate.replace(" ", "_").replace("/", "_") == safe_key:
+                return candidate
+    except Exception:
+        pass
     return None
 
 
@@ -2210,14 +2759,30 @@ def render_hidden_projects(store_data, _status_trigger):
     hidden_items = []
     for proj in hidden:
         hidden_items.append(
-            dbc.Alert([
-                html.Span(proj, style={"fontWeight": "600"}),
-                dbc.Button("Unhide", id={"type": "btn-unhide", "project": proj},
-                           color="success", size="sm", className="float-end"),
-            ], color="warning", style={"padding": "8px 12px", "marginBottom": "6px"})
+            html.Div([
+                html.Div([
+                    html.I(className="bi bi-eye-slash",
+                           style={"color": "#f0a500", "fontSize": "12px", "marginRight": "7px", "flexShrink": 0}),
+                    html.Span(proj, style={"fontWeight": "600", "fontSize": "13px", "color": DARK}),
+                ], style={"display": "flex", "alignItems": "center", "flex": 1}),
+                html.Button(
+                    [html.I(className="bi bi-eye me-1"), "Unhide"],
+                    id={"type": "btn-unhide", "project": proj},
+                    style={
+                        "background": "none", "border": "1px solid #2e7d32", "cursor": "pointer",
+                        "color": "#2e7d32", "fontSize": "11px", "fontWeight": "700",
+                        "padding": "2px 10px", "borderRadius": "12px", "flexShrink": 0,
+                    },
+                ),
+            ], style={
+                "display": "flex", "alignItems": "center", "gap": "8px",
+                "padding": "7px 10px", "borderRadius": "7px",
+                "background": "#fffdf0", "border": "1px solid #fde8a0",
+                "marginBottom": "6px",
+            })
         )
     if not hidden_items:
-        hidden_items = [html.P("No hidden projects.", style={"color": "#999", "fontSize": "13px"})]
+        hidden_items = [html.P("No hidden projects.", style={"color": "#aaa", "fontSize": "13px"})]
 
     # Project options for hide dropdown
     if not df.empty:
@@ -2258,6 +2823,346 @@ def manage_hidden_projects(hide_clicks, unhide_clicks, project_to_hide):
             return dbc.Alert(f"'{project_to_hide}' hidden.", color="warning", duration=3000), hidden
 
     return no_update, no_update
+
+
+# ===========================================================================
+# Manual Project Tracking callbacks
+# ===========================================================================
+
+@app.callback(
+    Output("manual-client-select", "options"),
+    Input("data-store", "data"),
+)
+def update_manual_client_options(store_data):
+    df = df_from_store(store_data)
+    clients = []
+    if not df.empty and "CLIENT" in df.columns:
+        clients = sorted(df["CLIENT"].dropna().unique().tolist())
+    options = [{"label": c, "value": c} for c in clients]
+    options.append({"label": "➕ New Client...", "value": "__new__"})
+    return options
+
+
+@app.callback(
+    Output("manual-new-client-div", "style"),
+    Input("manual-client-select", "value"),
+)
+def toggle_new_client_input(client_val):
+    if client_val == "__new__":
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+@app.callback(
+    Output("manual-projects-list", "children"),
+    Input("manual-refresh-store", "data"),
+)
+def render_manual_projects_list(_refresh):
+    projects = load_manual_projects()
+    if not projects:
+        return html.P("No manual projects defined yet.",
+                      style={"color": "#aaa", "fontSize": "13px", "padding": "8px 4px"})
+    items = []
+    for mp in projects:
+        items.append(
+            html.Div([
+                html.Div([
+                    html.I(className="bi bi-file-earmark-bar-graph",
+                           style={"color": BRAND, "fontSize": "13px", "marginRight": "8px", "flexShrink": 0}),
+                    html.Div([
+                        html.Span(mp["project_name"], style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        html.Span(mp["client_name"], style={"color": "#999", "fontSize": "11px", "marginLeft": "6px"}),
+                    ]),
+                ], style={"display": "flex", "alignItems": "center", "flex": 1, "minWidth": 0}),
+                html.Button(
+                    html.I(className="bi bi-trash"),
+                    id={"type": "btn-delete-manual-project", "id": mp["id"]},
+                    title="Delete project",
+                    style={
+                        "background": "none", "border": "none", "cursor": "pointer",
+                        "color": "#ccc", "fontSize": "14px", "padding": "2px 6px",
+                        "flexShrink": 0, "lineHeight": 1,
+                    },
+                ),
+            ], style={
+                "display": "flex", "alignItems": "center", "gap": "8px",
+                "padding": "8px 10px", "borderRadius": "7px",
+                "borderBottom": "1px solid #f3f3f3",
+            })
+        )
+    return items
+
+
+@app.callback(
+    Output("manual-refresh-store", "data"),
+    Output("manual-project-status", "children"),
+    Output("data-store", "data", allow_duplicate=True),
+    Input("btn-add-manual-project", "n_clicks"),
+    Input({"type": "btn-delete-manual-project", "id": dash.ALL}, "n_clicks"),
+    State("manual-client-select", "value"),
+    State("manual-new-client-input", "value"),
+    State("manual-project-name-input", "value"),
+    State("manual-refresh-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_manual_project_action(add_clicks, delete_clicks, client_val, new_client_name, project_name, refresh_count):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value:
+        return no_update, no_update, no_update
+
+    refresh_count = (refresh_count or 0) + 1
+
+    if isinstance(triggered, dict) and triggered.get("type") == "btn-delete-manual-project":
+        try:
+            delete_manual_project_by_id(triggered["id"])
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert("Project deleted.", color="warning", duration=3000), df_to_store(df)
+        except Exception as e:
+            return refresh_count, dbc.Alert(f"Error: {e}", color="danger"), no_update
+
+    if triggered == "btn-add-manual-project":
+        if not project_name or not project_name.strip():
+            return no_update, dbc.Alert("Project name is required.", color="danger", duration=3000), no_update
+        if not client_val:
+            return no_update, dbc.Alert("Please select a client.", color="danger", duration=3000), no_update
+
+        if client_val == "__new__":
+            if not new_client_name or not new_client_name.strip():
+                return no_update, dbc.Alert("New client name is required.", color="danger", duration=3000), no_update
+            company_name   = new_client_name.strip().upper()
+            client_name    = new_client_name.strip().upper()
+            worksheet_name = new_client_name.strip().upper()
+        else:
+            company_name   = client_val
+            client_name    = client_val
+            worksheet_name = client_val
+            for cn, cc in COMPANY_CONFIGS.items():
+                if cc.get("client_name", cn) == client_val:
+                    company_name   = cn
+                    worksheet_name = cc.get("worksheet_name", cn)
+                    break
+
+        pname = project_name.strip().upper()
+        try:
+            save_manual_project(company_name, client_name, pname, worksheet_name)
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert(f"Project '{pname}' added.", color="success", duration=3000), df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error: {e}", color="danger"), no_update
+
+    return no_update, no_update, no_update
+
+
+@app.callback(
+    Output("manual-project-select", "options"),
+    Input("manual-refresh-store", "data"),
+)
+def update_manual_project_selector(_refresh):
+    projects = load_manual_projects()
+    return [
+        {
+            "label": f"{mp['project_name']} ({mp['client_name']})",
+            "value": f"{mp['worksheet_name']}_{mp['project_name']}",
+        }
+        for mp in projects
+    ]
+
+
+@app.callback(
+    Output("manual-usage-table", "children"),
+    Input("manual-project-select", "value"),
+    Input("manual-refresh-store", "data"),
+)
+def render_manual_usage_table(project_key, _refresh):
+    if not project_key:
+        return html.P("Select a project above to view and log usage.", style={"color": "#999", "fontSize": "13px"})
+    entries = load_manual_usage_entries(project_key)
+    if not entries:
+        return html.P("No entries yet. Add one above.", style={"color": "#999", "fontSize": "13px"})
+
+    _month_names = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"]
+
+    def _fmt_date(d):
+        """Show 'January 2026 (monthly)' for 1st-of-month entries, raw date otherwise."""
+        try:
+            dt = datetime.strptime(d[:10], "%Y-%m-%d")
+            if dt.day == 1:
+                return f"{_month_names[dt.month - 1]} {dt.year}", True
+        except Exception:
+            pass
+        return d[:10], False
+
+    rows = []
+    for entry in entries:
+        date_label, is_monthly = _fmt_date(entry["date"])
+        rows.append(html.Tr([
+            html.Td([
+                date_label,
+                dbc.Badge("monthly", color="info", className="ms-2",
+                          style={"fontSize": "9px", "fontWeight": "600"}) if is_monthly else None,
+            ], style={"fontWeight": "600", "fontSize": "13px"}),
+            html.Td(str(entry["usage_count"]), style={"fontSize": "13px"}),
+            html.Td([
+                dbc.Button(
+                    "Edit",
+                    id={"type": "btn-edit-manual-entry", "id": entry["id"],
+                        "date": entry["date"], "count": str(entry["usage_count"])},
+                    color="info", size="sm", className="me-1",
+                    style={"fontSize": "11px", "padding": "2px 8px"},
+                ),
+                dbc.Button(
+                    "Delete",
+                    id={"type": "btn-delete-manual-entry", "id": entry["id"]},
+                    color="danger", size="sm",
+                    style={"fontSize": "11px", "padding": "2px 8px"},
+                ),
+            ]),
+        ]))
+
+    return dbc.Table(
+        [
+            html.Thead(html.Tr([
+                html.Th("Date", style={"fontSize": "12px"}),
+                html.Th("Usage Count", style={"fontSize": "12px"}),
+                html.Th("Actions", style={"fontSize": "12px"}),
+            ])),
+            html.Tbody(rows),
+        ],
+        striped=True, hover=True, size="sm",
+        style={"marginTop": "4px"},
+    )
+
+
+@app.callback(
+    Output("manual-usage-date", "date"),
+    Output("manual-usage-count", "value"),
+    Output("manual-edit-entry-store", "data"),
+    Output("btn-cancel-manual-edit", "style"),
+    Output("manual-edit-indicator", "children"),
+    Input({"type": "btn-edit-manual-entry", "id": dash.ALL, "date": dash.ALL, "count": dash.ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def populate_edit_form(edit_clicks):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value or not isinstance(triggered, dict):
+        return no_update, no_update, no_update, no_update, no_update
+
+    entry_id    = triggered["id"]
+    entry_date  = triggered["date"]
+    entry_count = triggered["count"]
+
+    return (
+        entry_date,
+        int(entry_count),
+        {"id": entry_id, "date": entry_date, "count": int(entry_count)},
+        {"display": "inline-block"},
+        dbc.Badge(f"Editing entry for {entry_date} — change values above and click Save", color="warning", className="mb-2"),
+    )
+
+
+@app.callback(
+    Output("manual-refresh-store", "data", allow_duplicate=True),
+    Output("manual-entry-status", "children"),
+    Output("manual-usage-date", "date", allow_duplicate=True),
+    Output("manual-usage-count", "value", allow_duplicate=True),
+    Output("manual-usage-count-monthly", "value", allow_duplicate=True),
+    Output("manual-edit-entry-store", "data", allow_duplicate=True),
+    Output("btn-cancel-manual-edit", "style", allow_duplicate=True),
+    Output("manual-edit-indicator", "children", allow_duplicate=True),
+    Output("data-store", "data", allow_duplicate=True),
+    Input("btn-save-manual-entry", "n_clicks"),
+    Input("btn-cancel-manual-edit", "n_clicks"),
+    Input({"type": "btn-delete-manual-entry", "id": dash.ALL}, "n_clicks"),
+    State("manual-project-select", "value"),
+    State("manual-usage-mode", "value"),
+    State("manual-usage-date", "date"),
+    State("manual-usage-count", "value"),
+    State("manual-usage-month", "value"),
+    State("manual-usage-year", "value"),
+    State("manual-usage-count-monthly", "value"),
+    State("manual-edit-entry-store", "data"),
+    State("manual-refresh-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_usage_entry_action(save_clicks, cancel_clicks, delete_clicks,
+                               project_key, mode, entry_date, usage_count,
+                               entry_month, entry_year, usage_count_monthly,
+                               edit_store, refresh_count):
+    triggered = ctx.triggered_id
+    triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
+    if not triggered_value:
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    hidden_style  = {"display": "none"}
+    refresh_count = (refresh_count or 0) + 1
+
+    if triggered == "btn-cancel-manual-edit":
+        return no_update, no_update, None, None, None, None, hidden_style, None, no_update
+
+    if isinstance(triggered, dict) and triggered.get("type") == "btn-delete-manual-entry":
+        try:
+            delete_manual_usage_entry(triggered["id"])
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert("Entry deleted.", color="warning", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error: {e}", color="danger"), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    if triggered == "btn-save-manual-entry":
+        if not project_key:
+            return no_update, dbc.Alert("Select a project first.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+        is_monthly = (mode == "monthly")
+
+        if is_monthly:
+            if not entry_month or not entry_year:
+                return no_update, dbc.Alert("Month and year are required.", color="danger", duration=3000), \
+                       no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            raw_count = usage_count_monthly
+        else:
+            if not entry_date:
+                return no_update, dbc.Alert("Date is required.", color="danger", duration=3000), \
+                       no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            raw_count = usage_count
+
+        if raw_count is None:
+            return no_update, dbc.Alert("Usage count is required.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        try:
+            count = int(raw_count)
+        except (ValueError, TypeError):
+            return no_update, dbc.Alert("Usage count must be a whole number.", color="danger", duration=3000), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+        if is_monthly:
+            date_str = f"{int(entry_year)}-{int(entry_month):02d}-01"
+            month_names = ["January","February","March","April","May","June",
+                           "July","August","September","October","November","December"]
+            label = f"{month_names[int(entry_month)-1]} {int(entry_year)}"
+        else:
+            date_str = str(entry_date)[:10]
+            label = date_str
+
+        try:
+            if edit_store and edit_store.get("id"):
+                update_manual_usage_entry_by_id(edit_store["id"], date_str, count)
+                msg = f"Entry updated for {label}."
+            else:
+                upsert_manual_usage_entry(project_key, date_str, count)
+                msg = f"Entry saved for {label}."
+            df = fetch_dataframe()
+            return refresh_count, dbc.Alert(msg, color="success", duration=3000), \
+                   None, None, None, None, hidden_style, None, df_to_store(df)
+        except Exception as e:
+            return no_update, dbc.Alert(f"Error saving entry: {e}", color="danger"), \
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
 
 # ===========================================================================
