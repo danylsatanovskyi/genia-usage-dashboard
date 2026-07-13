@@ -1691,18 +1691,17 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 # 3a-00. Manual usage entries collapsible toggle
 # ---------------------------------------------------------------------------
 app.clientside_callback(
-    """
-    function(n, isOpen) {
-        var open = n ? !isOpen : isOpen;
-        var cls = open ? 'bi bi-chevron-down me-2' : 'bi bi-chevron-right me-2';
-        return [open, cls];
-    }
-    """,
+    "function(n, isOpen) { return n ? !isOpen : isOpen; }",
     Output("manual-entries-collapse", "is_open"),
-    Output("manual-entries-chevron", "className"),
     Input("manual-entries-toggle", "n_clicks"),
     State("manual-entries-collapse", "is_open"),
     prevent_initial_call=True,
+)
+
+app.clientside_callback(
+    "function(isOpen) { return isOpen ? 'bi bi-chevron-down me-2' : 'bi bi-chevron-right me-2'; }",
+    Output("manual-entries-chevron", "className"),
+    Input("manual-entries-collapse", "is_open"),
 )
 
 
@@ -1710,15 +1709,13 @@ app.clientside_callback(
 # 3a-0. Manual usage mode toggle: show daily or monthly inputs
 # ---------------------------------------------------------------------------
 app.clientside_callback(
-    """
-    function(mode) {
-        if (mode === 'monthly') {
-            return [{"display": "none", "marginBottom": "16px"}, {"display": "block", "marginBottom": "16px"}];
-        }
-        return [{"display": "block", "marginBottom": "16px"}, {"display": "none", "marginBottom": "16px"}];
-    }
-    """,
+    "function(mode) { return mode === 'monthly' ? {'display':'none','marginBottom':'16px'} : {'display':'block','marginBottom':'16px'}; }",
     Output("manual-date-daily-div", "style"),
+    Input("manual-usage-mode", "value"),
+)
+
+app.clientside_callback(
+    "function(mode) { return mode === 'monthly' ? {'display':'block','marginBottom':'16px'} : {'display':'none','marginBottom':'16px'}; }",
     Output("manual-date-monthly-div", "style"),
     Input("manual-usage-mode", "value"),
 )
