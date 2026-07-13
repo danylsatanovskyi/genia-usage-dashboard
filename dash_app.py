@@ -1100,29 +1100,73 @@ def make_settings_tab():
                     ]), type="circle", color=BRAND, overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=4),
                 dbc.Col([
-                    html.H6("Log Daily Usage", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
+                    html.H6("Log Usage", style={"fontWeight": "700", "marginBottom": "10px", "fontSize": "13px"}),
                     dcc.Dropdown(
                         id="manual-project-select",
                         placeholder="Select a project to log usage...",
                         style={"marginBottom": "12px", "fontSize": "13px"},
                     ),
                     html.Div(id="manual-edit-indicator", style={"marginBottom": "8px"}),
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Label("Date", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                            dcc.DatePickerSingle(
-                                id="manual-usage-date",
-                                display_format="YYYY-MM-DD",
-                                placeholder="Pick a date",
-                                style={"width": "100%"},
-                            ),
-                        ], md=6),
-                        dbc.Col([
-                            dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
-                            dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
-                                      placeholder="e.g. 42", size="sm"),
-                        ], md=6),
-                    ], className="mb-3"),
+                    # Mode toggle
+                    dbc.RadioItems(
+                        id="manual-usage-mode",
+                        options=[
+                            {"label": "Daily", "value": "daily"},
+                            {"label": "Monthly", "value": "monthly"},
+                        ],
+                        value="daily",
+                        inline=True,
+                        className="mb-3",
+                        style={"fontSize": "13px"},
+                    ),
+                    # Daily date picker
+                    html.Div([
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.Label("Date", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                                dcc.DatePickerSingle(
+                                    id="manual-usage-date",
+                                    display_format="YYYY-MM-DD",
+                                    placeholder="Pick a date",
+                                    style={"width": "100%"},
+                                ),
+                            ], md=6),
+                            dbc.Col([
+                                dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                                dbc.Input(id="manual-usage-count", type="number", min=0, step=1,
+                                          placeholder="e.g. 42", size="sm"),
+                            ], md=6),
+                        ]),
+                    ], id="manual-date-daily-div", style={"marginBottom": "16px"}),
+                    # Monthly pickers
+                    html.Div([
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.Label("Month", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                                dcc.Dropdown(
+                                    id="manual-usage-month",
+                                    options=[{"label": m, "value": i + 1} for i, m in enumerate([
+                                        "January","February","March","April","May","June",
+                                        "July","August","September","October","November","December",
+                                    ])],
+                                    placeholder="Select month",
+                                    clearable=False,
+                                    style={"fontSize": "13px"},
+                                ),
+                            ], md=4),
+                            dbc.Col([
+                                dbc.Label("Year", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                                dbc.Input(id="manual-usage-year", type="number", min=2020, max=2035, step=1,
+                                          placeholder="Year", size="sm",
+                                          value=datetime.now().year),
+                            ], md=3),
+                            dbc.Col([
+                                dbc.Label("Usage Count", style={"fontSize": "12px", "fontWeight": "600", "marginBottom": "2px"}),
+                                dbc.Input(id="manual-usage-count-monthly", type="number", min=0, step=1,
+                                          placeholder="e.g. 42", size="sm"),
+                            ], md=5),
+                        ]),
+                    ], id="manual-date-monthly-div", style={"display": "none", "marginBottom": "16px"}),
                     dcc.Loading(html.Div([
                         dbc.Button("Save Entry", id="btn-save-manual-entry", size="sm",
                                    style={"background": BRAND, "border": "none", "fontWeight": "600", "marginRight": "8px"}),
@@ -1627,6 +1671,24 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
         flush=True,
         style={"marginBottom": "16px"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 3a-0. Manual usage mode toggle: show daily or monthly inputs
+# ---------------------------------------------------------------------------
+app.clientside_callback(
+    """
+    function(mode) {
+        if (mode === 'monthly') {
+            return [{"display": "none", "marginBottom": "16px"}, {"display": "block", "marginBottom": "16px"}];
+        }
+        return [{"display": "block", "marginBottom": "16px"}, {"display": "none", "marginBottom": "16px"}];
+    }
+    """,
+    Output("manual-date-daily-div", "style"),
+    Output("manual-date-monthly-div", "style"),
+    Input("manual-usage-mode", "value"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -2710,10 +2772,28 @@ def render_manual_usage_table(project_key, _refresh):
     if not entries:
         return html.P("No entries yet. Add one above.", style={"color": "#999", "fontSize": "13px"})
 
+    _month_names = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"]
+
+    def _fmt_date(d):
+        """Show 'January 2026 (monthly)' for 1st-of-month entries, raw date otherwise."""
+        try:
+            dt = datetime.strptime(d[:10], "%Y-%m-%d")
+            if dt.day == 1:
+                return f"{_month_names[dt.month - 1]} {dt.year}", True
+        except Exception:
+            pass
+        return d[:10], False
+
     rows = []
     for entry in entries:
+        date_label, is_monthly = _fmt_date(entry["date"])
         rows.append(html.Tr([
-            html.Td(entry["date"], style={"fontWeight": "600", "fontSize": "13px"}),
+            html.Td([
+                date_label,
+                dbc.Badge("monthly", color="info", className="ms-2",
+                          style={"fontSize": "9px", "fontWeight": "600"}) if is_monthly else None,
+            ], style={"fontWeight": "600", "fontSize": "13px"}),
             html.Td(str(entry["usage_count"]), style={"fontSize": "13px"}),
             html.Td([
                 dbc.Button(
@@ -2779,6 +2859,7 @@ def populate_edit_form(edit_clicks):
     Output("manual-entry-status", "children"),
     Output("manual-usage-date", "date", allow_duplicate=True),
     Output("manual-usage-count", "value", allow_duplicate=True),
+    Output("manual-usage-count-monthly", "value", allow_duplicate=True),
     Output("manual-edit-entry-store", "data", allow_duplicate=True),
     Output("btn-cancel-manual-edit", "style", allow_duplicate=True),
     Output("manual-edit-indicator", "children", allow_duplicate=True),
@@ -2787,67 +2868,92 @@ def populate_edit_form(edit_clicks):
     Input("btn-cancel-manual-edit", "n_clicks"),
     Input({"type": "btn-delete-manual-entry", "id": dash.ALL}, "n_clicks"),
     State("manual-project-select", "value"),
+    State("manual-usage-mode", "value"),
     State("manual-usage-date", "date"),
     State("manual-usage-count", "value"),
+    State("manual-usage-month", "value"),
+    State("manual-usage-year", "value"),
+    State("manual-usage-count-monthly", "value"),
     State("manual-edit-entry-store", "data"),
     State("manual-refresh-store", "data"),
     prevent_initial_call=True,
 )
 def handle_usage_entry_action(save_clicks, cancel_clicks, delete_clicks,
-                               project_key, entry_date, usage_count, edit_store, refresh_count):
+                               project_key, mode, entry_date, usage_count,
+                               entry_month, entry_year, usage_count_monthly,
+                               edit_store, refresh_count):
     triggered = ctx.triggered_id
     triggered_value = ctx.triggered[0]["value"] if ctx.triggered else 0
     if not triggered_value:
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     hidden_style  = {"display": "none"}
     refresh_count = (refresh_count or 0) + 1
 
     if triggered == "btn-cancel-manual-edit":
-        return no_update, no_update, None, None, None, hidden_style, None, no_update
+        return no_update, no_update, None, None, None, None, hidden_style, None, no_update
 
     if isinstance(triggered, dict) and triggered.get("type") == "btn-delete-manual-entry":
         try:
             delete_manual_usage_entry(triggered["id"])
             df = fetch_dataframe()
             return refresh_count, dbc.Alert("Entry deleted.", color="warning", duration=3000), \
-                   no_update, no_update, no_update, no_update, no_update, df_to_store(df)
+                   no_update, no_update, no_update, no_update, no_update, no_update, df_to_store(df)
         except Exception as e:
             return no_update, dbc.Alert(f"Error: {e}", color="danger"), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     if triggered == "btn-save-manual-entry":
         if not project_key:
             return no_update, dbc.Alert("Select a project first.", color="danger", duration=3000), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
-        if not entry_date:
-            return no_update, dbc.Alert("Date is required.", color="danger", duration=3000), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
-        if usage_count is None:
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+        is_monthly = (mode == "monthly")
+
+        if is_monthly:
+            if not entry_month or not entry_year:
+                return no_update, dbc.Alert("Month and year are required.", color="danger", duration=3000), \
+                       no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            raw_count = usage_count_monthly
+        else:
+            if not entry_date:
+                return no_update, dbc.Alert("Date is required.", color="danger", duration=3000), \
+                       no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            raw_count = usage_count
+
+        if raw_count is None:
             return no_update, dbc.Alert("Usage count is required.", color="danger", duration=3000), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
         try:
-            count = int(usage_count)
+            count = int(raw_count)
         except (ValueError, TypeError):
             return no_update, dbc.Alert("Usage count must be a whole number.", color="danger", duration=3000), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
-        date_str = str(entry_date)[:10]
+        if is_monthly:
+            date_str = f"{int(entry_year)}-{int(entry_month):02d}-01"
+            month_names = ["January","February","March","April","May","June",
+                           "July","August","September","October","November","December"]
+            label = f"{month_names[int(entry_month)-1]} {int(entry_year)}"
+        else:
+            date_str = str(entry_date)[:10]
+            label = date_str
+
         try:
             if edit_store and edit_store.get("id"):
                 update_manual_usage_entry_by_id(edit_store["id"], date_str, count)
-                msg = f"Entry updated for {date_str}."
+                msg = f"Entry updated for {label}."
             else:
                 upsert_manual_usage_entry(project_key, date_str, count)
-                msg = f"Entry saved for {date_str}."
+                msg = f"Entry saved for {label}."
             df = fetch_dataframe()
             return refresh_count, dbc.Alert(msg, color="success", duration=3000), \
-                   None, None, None, hidden_style, None, df_to_store(df)
+                   None, None, None, None, hidden_style, None, df_to_store(df)
         except Exception as e:
             return no_update, dbc.Alert(f"Error saving entry: {e}", color="danger"), \
-                   no_update, no_update, no_update, no_update, no_update, no_update
+                   no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
-    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
 
 # ===========================================================================
