@@ -1036,7 +1036,10 @@ def make_settings_tab():
         children=[
             dbc.Row([
                 dbc.Col([
-                    html.H5("Project Configuration", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
+                    html.Div([
+                        html.I(className="bi bi-sliders me-2", style={"color": BRAND, "fontSize": "14px"}),
+                        html.Span("Project Configuration", style={"fontWeight": "700", "fontSize": "15px", "color": DARK}),
+                    ], style={"display": "flex", "alignItems": "center", "marginBottom": "16px"}),
                     dcc.Loading(
                         id="loading-settings",
                         type="circle",
@@ -1045,30 +1048,63 @@ def make_settings_tab():
                     ),
                     dcc.Loading(html.Div([
                         dbc.Button(
-                            "Save Configuration",
+                            [html.I(className="bi bi-floppy me-2"), "Save Configuration"],
                             id="btn-save-config",
-                            color="primary",
-                            style={"background": BRAND, "border": "none", "marginTop": "20px", "fontWeight": "600"},
+                            style={"background": BRAND, "border": "none", "marginTop": "20px",
+                                   "fontWeight": "600", "borderRadius": "20px", "padding": "7px 20px"},
                         ),
                         html.Div(id="save-config-status", style={"marginTop": "10px"}),
                     ]), type="circle", color=BRAND,
                     overlay_style={"visibility": "visible", "opacity": 0.5}),
                 ], md=8),
                 dbc.Col([
-                    html.H5("Status Reference", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
-                    make_status_legend(),
-                    html.Hr(style={"margin": "20px 0"}),
-                    html.H5("Hidden Projects", style={"color": BRAND, "fontWeight": "700", "marginBottom": "16px"}),
-                    html.Div(id="hidden-projects-list"),
+                    # Status Reference card
                     html.Div([
-                        html.Label("Hide a Project:", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px"}),
-                        dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…", style={"marginBottom": "8px"}),
-                        dcc.Loading(html.Div([
-                            dbc.Button("Hide Project", id="btn-hide-project", color="warning", size="sm"),
-                            html.Div(id="hide-project-status", style={"marginTop": "10px"}),
-                        ]), type="circle", color=BRAND,
-                        overlay_style={"visibility": "visible", "opacity": 0.5}),
-                    ], style={"marginTop": "20px"}),
+                        html.Div([
+                            html.I(className="bi bi-info-circle me-2", style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Status Reference", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div(make_status_legend(), style={"padding": "12px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)", "marginBottom": "14px",
+                    }),
+                    # Hidden Projects card
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-eye-slash me-2", style={"color": BRAND, "fontSize": "14px"}),
+                            html.Span("Hidden Projects", style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        ], style={
+                            "padding": "10px 14px", "borderBottom": "1px solid #eee",
+                            "background": "#f8f9fa", "borderRadius": "10px 10px 0 0",
+                            "display": "flex", "alignItems": "center",
+                        }),
+                        html.Div([
+                            html.Div(id="hidden-projects-list", style={"marginBottom": "12px"}),
+                            dbc.Label("Hide a Project", style={"fontSize": "11px", "fontWeight": "700",
+                                                               "color": "#888", "textTransform": "uppercase",
+                                                               "letterSpacing": "0.4px", "marginBottom": "4px"}),
+                            dcc.Dropdown(id="hide-project-dropdown", options=[], placeholder="Select project…",
+                                         style={"marginBottom": "10px", "fontSize": "13px"}),
+                            dcc.Loading(html.Div([
+                                dbc.Button(
+                                    [html.I(className="bi bi-eye-slash me-2"), "Hide Project"],
+                                    id="btn-hide-project", size="sm",
+                                    style={"background": "#f0a500", "border": "none", "fontWeight": "600",
+                                           "borderRadius": "20px", "padding": "6px 16px", "color": "white"},
+                                ),
+                                html.Div(id="hide-project-status", style={"marginTop": "10px"}),
+                            ]), type="circle", color=BRAND,
+                            overlay_style={"visibility": "visible", "opacity": 0.5}),
+                        ], style={"padding": "14px 16px"}),
+                    ], style={
+                        "border": "1px solid #e5e5e5", "borderRadius": "10px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+                    }),
                 ], md=4),
             ]),
             html.Hr(style={"margin": "36px 0 24px 0"}),
@@ -2723,14 +2759,30 @@ def render_hidden_projects(store_data, _status_trigger):
     hidden_items = []
     for proj in hidden:
         hidden_items.append(
-            dbc.Alert([
-                html.Span(proj, style={"fontWeight": "600"}),
-                dbc.Button("Unhide", id={"type": "btn-unhide", "project": proj},
-                           color="success", size="sm", className="float-end"),
-            ], color="warning", style={"padding": "8px 12px", "marginBottom": "6px"})
+            html.Div([
+                html.Div([
+                    html.I(className="bi bi-eye-slash",
+                           style={"color": "#f0a500", "fontSize": "12px", "marginRight": "7px", "flexShrink": 0}),
+                    html.Span(proj, style={"fontWeight": "600", "fontSize": "13px", "color": DARK}),
+                ], style={"display": "flex", "alignItems": "center", "flex": 1}),
+                html.Button(
+                    [html.I(className="bi bi-eye me-1"), "Unhide"],
+                    id={"type": "btn-unhide", "project": proj},
+                    style={
+                        "background": "none", "border": "1px solid #2e7d32", "cursor": "pointer",
+                        "color": "#2e7d32", "fontSize": "11px", "fontWeight": "700",
+                        "padding": "2px 10px", "borderRadius": "12px", "flexShrink": 0,
+                    },
+                ),
+            ], style={
+                "display": "flex", "alignItems": "center", "gap": "8px",
+                "padding": "7px 10px", "borderRadius": "7px",
+                "background": "#fffdf0", "border": "1px solid #fde8a0",
+                "marginBottom": "6px",
+            })
         )
     if not hidden_items:
-        hidden_items = [html.P("No hidden projects.", style={"color": "#999", "fontSize": "13px"})]
+        hidden_items = [html.P("No hidden projects.", style={"color": "#aaa", "fontSize": "13px"})]
 
     # Project options for hide dropdown
     if not df.empty:
@@ -2808,25 +2860,35 @@ def toggle_new_client_input(client_val):
 def render_manual_projects_list(_refresh):
     projects = load_manual_projects()
     if not projects:
-        return html.P("No manual projects defined yet.", style={"color": "#999", "fontSize": "13px"})
+        return html.P("No manual projects defined yet.",
+                      style={"color": "#aaa", "fontSize": "13px", "padding": "8px 4px"})
     items = []
     for mp in projects:
         items.append(
-            dbc.Alert(
+            html.Div([
                 html.Div([
+                    html.I(className="bi bi-file-earmark-bar-graph",
+                           style={"color": BRAND, "fontSize": "13px", "marginRight": "8px", "flexShrink": 0}),
                     html.Div([
-                        html.Span(mp["project_name"], style={"fontWeight": "700", "fontSize": "13px"}),
-                        html.Span(f"  {mp['client_name']}", style={"color": "#666", "fontSize": "12px"}),
-                    ], style={"flex": 1}),
-                    dbc.Button(
-                        "Delete",
-                        id={"type": "btn-delete-manual-project", "id": mp["id"]},
-                        color="danger", size="sm", style={"flexShrink": 0},
-                    ),
-                ], style={"display": "flex", "alignItems": "center", "gap": "10px"}),
-                color="light",
-                style={"padding": "8px 12px", "marginBottom": "6px"},
-            )
+                        html.Span(mp["project_name"], style={"fontWeight": "700", "fontSize": "13px", "color": DARK}),
+                        html.Span(mp["client_name"], style={"color": "#999", "fontSize": "11px", "marginLeft": "6px"}),
+                    ]),
+                ], style={"display": "flex", "alignItems": "center", "flex": 1, "minWidth": 0}),
+                html.Button(
+                    html.I(className="bi bi-trash"),
+                    id={"type": "btn-delete-manual-project", "id": mp["id"]},
+                    title="Delete project",
+                    style={
+                        "background": "none", "border": "none", "cursor": "pointer",
+                        "color": "#ccc", "fontSize": "14px", "padding": "2px 6px",
+                        "flexShrink": 0, "lineHeight": 1,
+                    },
+                ),
+            ], style={
+                "display": "flex", "alignItems": "center", "gap": "8px",
+                "padding": "8px 10px", "borderRadius": "7px",
+                "borderBottom": "1px solid #f3f3f3",
+            })
         )
     return items
 
