@@ -393,13 +393,23 @@ def build_client_table(client_rows, visible_cols=None):
     total_cols = 2 + sum(1 for c in TOGGLEABLE_COLS if c in vis)
 
     header_cells = [html.Th("Project", style=th_style)]
-    if "Activated"        in vis: header_cells.append(html.Th("Activated",        style={**th_style, "textAlign": "center"}))
-    if "Activity"         in vis: header_cells.append(html.Th("Activity",         style={**th_style, "textAlign": "center"}))
-    if "ROI & Performance"in vis: header_cells.append(html.Th("ROI & Performance",style={**th_style, "textAlign": "left"}))
-    if "1 mo"             in vis: header_cells.append(html.Th("1 mo",             style={**th_style, "textAlign": "right"}))
-    if "MoM %"            in vis: header_cells.append(html.Th("MoM %",            style={**th_style, "textAlign": "center"}))
-    if "Mo ROI %"         in vis: header_cells.append(html.Th("Mo ROI %",         style={**th_style, "textAlign": "center"}))
-    if "ROI %"            in vis: header_cells.append(html.Th("ROI %",            style={**th_style, "textAlign": "center"}))
+    if "Activated"         in vis: header_cells.append(html.Th("Activated",         style={**th_style, "textAlign": "center"}))
+    if "Activity"          in vis: header_cells.append(html.Th("Activity",          style={**th_style, "textAlign": "center"}))
+    if "ROI & Performance" in vis: header_cells.append(html.Th("ROI & Performance", style={**th_style, "textAlign": "left"}))
+    if "Mo Target"         in vis: header_cells.append(html.Th("Mo Target",         style={**th_style, "textAlign": "right"}))
+    if "1 mo"              in vis: header_cells.append(html.Th("1 mo",              style={**th_style, "textAlign": "right"}))
+    if "MoM %"             in vis: header_cells.append(html.Th("MoM %",             style={**th_style, "textAlign": "center"}))
+    if "3 mo"              in vis: header_cells.append(html.Th("3 mo",              style={**th_style, "textAlign": "right"}))
+    if "12 mo"             in vis: header_cells.append(html.Th("12 mo",             style={**th_style, "textAlign": "right"}))
+    if "Mo ROI %"          in vis: header_cells.append(html.Th("Mo ROI %",          style={**th_style, "textAlign": "center"}))
+    if "Hrs This Mo"       in vis: header_cells.append(html.Th("Hrs This Mo",       style={**th_style, "textAlign": "right"}))
+    if "Hrs 12mo"          in vis: header_cells.append(html.Th("Hrs 12mo",          style={**th_style, "textAlign": "right"}))
+    if "Investment"        in vis: header_cells.append(html.Th("Investment",        style={**th_style, "textAlign": "right"}))
+    if "Total Saved"       in vis: header_cells.append(html.Th("Total Saved",       style={**th_style, "textAlign": "right"}))
+    if "ROI %"             in vis: header_cells.append(html.Th("ROI %",             style={**th_style, "textAlign": "center"}))
+    if "YTD Usage"         in vis: header_cells.append(html.Th("YTD Usage",         style={**th_style, "textAlign": "right"}))
+    if "YTD Hrs"           in vis: header_cells.append(html.Th("YTD Hrs",           style={**th_style, "textAlign": "right"}))
+    if "YTD Saved"         in vis: header_cells.append(html.Th("YTD Saved",         style={**th_style, "textAlign": "right"}))
     header_cells.append(html.Th("", style=th_style))
 
     headers = html.Thead(html.Tr(header_cells))
@@ -500,13 +510,23 @@ def build_client_table(client_rows, visible_cols=None):
                        "borderLeft": f"4px solid {border_color}"},
             ),
         ]
-        if "Activated"         in vis: data_cells.append(html.Td(row.get("Activated", "") or "—", style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}))
+        if "Activated"         in vis: data_cells.append(html.Td(row.get("Activated", "") or "—",    style={**td_base, "textAlign": "center", "fontSize": "12px", "color": "#888"}))
         if "Activity"          in vis: data_cells.append(html.Td(_chip(activity_status, ACTIVITY_CHIP), style={**td_base, "textAlign": "center"}))
-        if "ROI & Performance" in vis: data_cells.append(html.Td(roi_chips, style={**td_base, "minWidth": "140px"}))
-        if "1 mo"              in vis: data_cells.append(html.Td(row.get("1 mo", ""),     style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
-        if "MoM %"             in vis: data_cells.append(html.Td(row.get("MoM %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}))
-        if "Mo ROI %"          in vis: data_cells.append(html.Td(row.get("Mo ROI %", ""), style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}))
-        if "ROI %"             in vis: data_cells.append(html.Td(row.get("ROI %", ""),    style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}))
+        if "ROI & Performance" in vis: data_cells.append(html.Td(roi_chips,                            style={**td_base, "minWidth": "140px"}))
+        if "Mo Target"         in vis: data_cells.append(html.Td(row.get("Mo Target", "") or "—",      style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#888"}))
+        if "1 mo"              in vis: data_cells.append(html.Td(row.get("1 mo", ""),                  style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "MoM %"             in vis: data_cells.append(html.Td(row.get("MoM %", ""),                 style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mom_bg}))
+        if "3 mo"              in vis: data_cells.append(html.Td(row.get("3 mo", ""),                  style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "12 mo"             in vis: data_cells.append(html.Td(row.get("12 mo", ""),                 style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "Mo ROI %"          in vis: data_cells.append(html.Td(row.get("Mo ROI %", ""),              style={**td_base, "textAlign": "center", "fontWeight": "600", "background": mr_bg}))
+        if "Hrs This Mo"       in vis: data_cells.append(html.Td(row.get("Hrs This Mo", "") or "—",    style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#555"}))
+        if "Hrs 12mo"          in vis: data_cells.append(html.Td(row.get("Hrs 12mo", "") or "—",       style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#555"}))
+        if "Investment"        in vis: data_cells.append(html.Td(row.get("Investment", "") or "—",     style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#888"}))
+        if "Total Saved"       in vis: data_cells.append(html.Td(row.get("Total Saved", "") or "—",    style={**td_base, "textAlign": "right", "fontWeight": "600", "color": "#2e7d32"}))
+        if "ROI %"             in vis: data_cells.append(html.Td(row.get("ROI %", ""),                 style={**td_base, "textAlign": "center", "fontWeight": "600", "background": roi_bg}))
+        if "YTD Usage"         in vis: data_cells.append(html.Td(row.get("_ytd_usage", "—"),           style={**td_base, "textAlign": "right",  "fontWeight": "600"}))
+        if "YTD Hrs"           in vis: data_cells.append(html.Td(row.get("_ytd_hrs", "—") or "—",      style={**td_base, "textAlign": "right", "fontSize": "12px", "color": "#00838f"}))
+        if "YTD Saved"         in vis: data_cells.append(html.Td(row.get("_ytd_saved", "—") or "—",    style={**td_base, "textAlign": "right", "fontWeight": "600", "color": "#2e7d32"}))
         data_cells.append(
             html.Td(
                 html.Button(
@@ -691,8 +711,15 @@ def _build_client_charts(client_df, client_id):
 # ---------------------------------------------------------------------------
 TABLE_COLS = ["Project", "Active?", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 
-# Columns that can be toggled on/off in the portfolio table
-TOGGLEABLE_COLS = ["Activated", "Activity", "ROI & Performance", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
+# Columns that can be toggled on/off in the portfolio table (full list, in display order)
+TOGGLEABLE_COLS = [
+    "Activated", "Activity", "ROI & Performance",
+    "Mo Target", "1 mo", "MoM %", "3 mo", "12 mo",
+    "Mo ROI %", "Hrs This Mo", "Hrs 12mo", "Investment", "Total Saved", "ROI %",
+    "YTD Usage", "YTD Hrs", "YTD Saved",
+]
+# Which columns are on by default
+DEFAULT_VISIBLE_COLS = ["Activated", "Activity", "ROI & Performance", "1 mo", "MoM %", "Mo ROI %", "ROI %"]
 
 
 # ---------------------------------------------------------------------------
@@ -893,7 +920,7 @@ def make_portfolio_tab():
 
             dcc.Store(id="client-sort-store", data={}),
             dcc.Store(id="accordion-active-store", data=None),
-            dcc.Store(id="col-visibility-store", data=TOGGLEABLE_COLS),
+            dcc.Store(id="col-visibility-store", data=DEFAULT_VISIBLE_COLS),
 
             # Column visibility controls
             html.Div([
@@ -905,7 +932,7 @@ def make_portfolio_tab():
                 dbc.Checklist(
                     id="col-visibility-checklist",
                     options=[{"label": c, "value": c} for c in TOGGLEABLE_COLS],
-                    value=TOGGLEABLE_COLS,
+                    value=DEFAULT_VISIBLE_COLS,
                     inline=True,
                     style={"marginBottom": 0},
                 ),
