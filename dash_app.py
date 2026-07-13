@@ -924,25 +924,35 @@ def make_portfolio_tab():
 
             # Column visibility controls
             html.Div([
-                html.Span("Columns:", style={
-                    "fontSize": "11px", "fontWeight": "700", "color": "#888",
-                    "textTransform": "uppercase", "letterSpacing": "0.4px",
-                    "whiteSpace": "nowrap",
-                }),
-                dbc.Checklist(
-                    id="col-visibility-checklist",
-                    options=[{"label": c, "value": c} for c in TOGGLEABLE_COLS],
-                    value=DEFAULT_VISIBLE_COLS,
-                    inline=True,
-                    style={"marginBottom": 0},
+                dbc.Button(
+                    [html.I(className="bi bi-layout-three-columns me-2"), "Columns"],
+                    id="col-visibility-toggle-btn",
+                    size="sm",
+                    outline=True,
+                    color="secondary",
+                    style={"borderRadius": "20px", "fontSize": "12px", "fontWeight": "600"},
+                    n_clicks=0,
                 ),
-            ], style={
-                "display": "flex", "alignItems": "center", "gap": "16px",
-                "flexWrap": "wrap",
-                "padding": "10px 16px", "background": "#f8f9fa",
-                "borderRadius": "8px", "border": "1px solid #eee",
-                "marginBottom": "16px",
-            }),
+                dbc.Collapse(
+                    html.Div([
+                        dbc.Checklist(
+                            id="col-visibility-checklist",
+                            options=[{"label": c, "value": c} for c in TOGGLEABLE_COLS],
+                            value=DEFAULT_VISIBLE_COLS,
+                            inline=True,
+                            style={"marginBottom": 0, "fontSize": "13px"},
+                        ),
+                    ], style={
+                        "padding": "12px 16px",
+                        "background": "#f8f9fa",
+                        "borderRadius": "8px",
+                        "border": "1px solid #e0e0e0",
+                        "marginTop": "8px",
+                    }),
+                    id="col-visibility-collapse",
+                    is_open=False,
+                ),
+            ], style={"marginBottom": "16px"}),
 
             # Portfolio table (grouped by client)
             dcc.Loading(
@@ -1620,8 +1630,17 @@ def update_table(store_data, hidden_store, client_filter, project_filter, activi
 
 
 # ---------------------------------------------------------------------------
-# 3a-1. Column visibility: sync checklist → store
+# 3a-1. Column visibility: toggle collapse + sync checklist → store
 # ---------------------------------------------------------------------------
+app.clientside_callback(
+    "function(n, isOpen) { return n ? !isOpen : isOpen; }",
+    Output("col-visibility-collapse", "is_open"),
+    Input("col-visibility-toggle-btn", "n_clicks"),
+    State("col-visibility-collapse", "is_open"),
+    prevent_initial_call=True,
+)
+
+
 @app.callback(
     Output("col-visibility-store", "data"),
     Input("col-visibility-checklist", "value"),
