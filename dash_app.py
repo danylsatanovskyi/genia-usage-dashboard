@@ -2217,24 +2217,38 @@ def render_usage_trend(raw_data, granularity="monthly"):
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
 
+    today = pd.Timestamp.now().normalize()
+
     if granularity == "daily":
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=90)
-        df = df[df["date"] >= cutoff]
+        # Aggregate by day (multiple entries on same day sum together)
+        df = df.groupby(df["date"].dt.normalize())["count"].sum().reset_index()
+        df.columns = ["date", "count"]
+        # Fill every day from first entry to today with 0
+        full_range = pd.date_range(df["date"].min(), today, freq="D")
+        df = df.set_index("date").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["date", "count"]
         x = df["date"].dt.strftime("%b %d, %Y")
         y = df["count"]
         mode = "lines+markers"
     elif granularity == "weekly":
         df["period"] = df["date"].dt.to_period("W").dt.start_time
         df = df.groupby("period")["count"].sum().reset_index()
-        # Label = "Week of Jun 23, 2025" (Monday start)
+        # Fill every week from first week to current week
+        this_week = today.to_period("W").start_time
+        full_range = pd.date_range(df["period"].min(), this_week, freq="W-MON")
+        df = df.set_index("period").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["period", "count"]
         x = df["period"].dt.strftime("w/o %b %d, %Y")
         y = df["count"]
         mode = "lines+markers"
     else:  # monthly
         df["period"] = df["date"].dt.to_period("M").dt.start_time
         df = df.groupby("period")["count"].sum().reset_index()
-        cutoff = pd.Timestamp.now() - pd.DateOffset(months=13)
-        df = df[df["period"] >= cutoff]
+        # Fill every month from first month to current month
+        this_month = today.to_period("M").start_time
+        full_range = pd.date_range(df["period"].min(), this_month, freq="MS")
+        df = df.set_index("period").reindex(full_range, fill_value=0).reset_index()
+        df.columns = ["period", "count"]
         x = df["period"].dt.strftime("%b %Y")
         y = df["count"]
         mode = "lines+markers"
@@ -2275,7 +2289,15 @@ def render_savings_trend(raw_data):
     if not monthly_savings or all(v == 0 for v in monthly_savings.values()):
         return empty
 
-    labels = list(monthly_savings.keys())
+    # Sort labels chronologically using MONTHS_FR order
+    import re as _re_s
+    _mre_s = _re_s.compile(r'^(' + '|'.join(MONTHS_FR) + r') (\d{4})$')
+    def _ms_sort_key(k):
+        m = _mre_s.match(k)
+        if m:
+            return int(m.group(2)) * 12 + MONTHS_FR.index(m.group(1))
+        return 0
+    labels = sorted(monthly_savings.keys(), key=_ms_sort_key)
     values = [monthly_savings[k] for k in labels]
 
     fig = go.Figure()
@@ -2287,7 +2309,7 @@ def render_savings_trend(raw_data):
         textfont={"size": 10, "color": DARK},
     ))
     fig.update_layout(
-        title={"text": "Monthly Savings (12 mo)", "font": {"size": 12, "color": "#888"}, "x": 0.01},
+        title={"text": "Monthly Savings", "font": {"size": 12, "color": "#888"}, "x": 0.01},
         margin={"l": 20, "r": 20, "t": 36, "b": 20},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         yaxis={"gridcolor": "#eee", "showline": False, "zeroline": False,
